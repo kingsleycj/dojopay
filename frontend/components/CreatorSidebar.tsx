@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 interface CreatorSidebarProps {
-    activeView?: 'dashboard' | 'home' | 'tasks';
-    onViewChange?: (view: 'dashboard' | 'home' | 'tasks') => void;
+    activeView?: 'dashboard' | 'home' | 'tasks' | 'create';
+    onViewChange?: (view: 'dashboard' | 'home' | 'tasks' | 'create') => void;
 }
 
 export const CreatorSidebar = ({ activeView, onViewChange }: CreatorSidebarProps) => {

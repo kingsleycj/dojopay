@@ -55,7 +55,7 @@ export default function CreatePage() {
             <ToastContainer />
             <Appbar onUserTypeSelect={setUserType} />
             <div className="flex flex-grow pt-16">
-                <CreatorSidebar activeView="create" onViewChange={() => {}} />
+                <CreatorSidebar activeView="home" onViewChange={() => {}} />
                 <div className="flex-grow ml-64">
                     <div className="max-w-4xl mx-auto p-8">
                         {/* Header Section */}
