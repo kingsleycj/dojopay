@@ -21,7 +21,7 @@ export const prismaClient = baseClient.$extends({
   query: {
     $allModels: {
       async $allOperations({ operation, model, args, query }) {
-        let retries = 3;
+        let retries = 5;
         while (true) {
           try {
             return await query(args);
@@ -47,7 +47,7 @@ export const prismaClient = baseClient.$extends({
 })
 
 // Add connection status logging with retry
-export async function connectDB(retries = 5) {
+export async function connectDB(retries = 8) {
   while (retries > 0) {
     try {
       console.log("Connecting to database...");

@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: dojopay-backend
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: RPC_URL
+        sync: false
+      - key: PRIVATE_KEY
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: S3_BUCKET_REGION
+        value: us-east-1
+      - key: S3_BUCKET_ACCESS_KEY_ID
+        sync: false
+      - key: S3_BUCKET_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_KEY
+        value: /dojo
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false

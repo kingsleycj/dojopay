@@ -56,7 +56,7 @@ router.post("/signin", async(req, res) => {
 
         res.json({
             token,
-            amount: existingUser.pending_amount / TOTAL_DECIMALS
+            amount: Number(existingUser.pending_amount) / TOTAL_DECIMALS
         })
     } else {
         const user = await prismaClient.worker.create({
