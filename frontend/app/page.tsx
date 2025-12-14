@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { WalletMultiButton, WalletDisconnectButton, useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton, WalletDisconnectButton } from "@solana/wallet-adapter-react-ui";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { Appbar } from "@/components/Appbar";
 import { Hero } from "@/components/Hero";
 import { Upload } from "@/components/Upload";
