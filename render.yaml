@@ -3,6 +3,8 @@ services:
     name: dojopay-backend
     env: node
     plan: free
+    repo: https://github.com/kingsleycj/dojopay.git
+    rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
