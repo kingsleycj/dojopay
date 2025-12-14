@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { BACKEND_URL } from '../utils';
+import { lamportsToSol } from '../utils/convert';
 
 interface Task {
     id: number;
@@ -17,13 +18,6 @@ interface Task {
         imageUrl: string;
     }>;
 }
-
-// Helper function to convert lamports to SOL
-const lamportsToSol = (lamports: string): string => {
-    const lamportsNum = parseInt(lamports);
-    const sol = lamportsNum / 1000000000; // 1 SOL = 1 billion lamports
-    return sol.toFixed(2); // Show 2 decimal places
-};
 
 export const TasksView = () => {
     const [tasks, setTasks] = useState<Task[]>([]);
@@ -82,7 +76,7 @@ export const TasksView = () => {
                                 <h3 className="text-lg font-semibold text-gray-800 mb-2 line-clamp-2">{task.title}</h3>
                                 
                                 <div className="flex items-center justify-between mb-4">
-                                    <span className="text-2xl font-bold text-purple-600">{lamportsToSol(task.amount)} SOL</span>
+                                    <span className="text-2xl font-bold text-purple-600">{lamportsToSol(task.amount, 1)} SOL</span>
                                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                                         task.status === 'completed' 
                                             ? 'bg-green-100 text-green-800' 

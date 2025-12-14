@@ -1,125 +1,124 @@
 "use client";
 import {
-    WalletDisconnectButton,
-    WalletMultiButton
-} from '@solana/wallet-adapter-react-ui';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { BACKEND_URL } from '@/utils';
-import { UserTypeModal } from './UserTypeModal';
+  WalletDisconnectButton,
+  WalletMultiButton,
+} from "@solana/wallet-adapter-react-ui";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { BACKEND_URL } from "@/utils";
+import { UserTypeModal } from "./UserTypeModal";
 
-export const Appbar = ({ onUserTypeSelect }: { onUserTypeSelect: (type: 'creator' | 'worker') => void }) => {
-    const { publicKey, signMessage } = useWallet();
-    const [mounted, setMounted] = useState(false);
-    const [showUserTypeModal, setShowUserTypeModal] = useState(false);
-    const [signingIn, setSigningIn] = useState(false);
+export const Appbar = ({
+  onUserTypeSelect,
+}: {
+  onUserTypeSelect: (type: "creator" | "worker") => void;
+}) => {
+  const { publicKey, signMessage } = useWallet();
+  const [mounted, setMounted] = useState(false);
+  const [showUserTypeModal, setShowUserTypeModal] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
-    useEffect(() => {
-        setMounted(true);
-    }, []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-    async function signAndSend() {
-        if (!publicKey) {
-            return;
-        }
-        if (localStorage.getItem("token")) {
-            return;
-        }
-        setSigningIn(true);
-        try {
-            const message = new TextEncoder().encode("Sign into DojoPay as a creator");
-            const signature = await signMessage?.(message);
-            console.log(signature)
-            console.log(publicKey)
-            const response = await axios.post(`${BACKEND_URL}/v1/user/signin`, {
-                signature,
-                publicKey: publicKey?.toString()
-            });
-
-            localStorage.setItem("token", response.data.token);
-        } catch (error) {
-            console.error("Backend signin fixed:", error);
-            // Don't crash the app if backend is not available
-        } finally {
-            setSigningIn(false);
-        }
+async function signAndSend(): Promise<boolean> {
+    if (!publicKey) {
+        return false;
     }
-
-    async function signAndSendWorker() {
-        if (!publicKey) {
-            return;
-        }
-        if (localStorage.getItem("workerToken")) {
-            return;
-        }
-        setSigningIn(true);
-        try {
-            const message = new TextEncoder().encode("Sign into DojoPay as a worker");
-            const signature = await signMessage?.(message);
-            console.log(signature)
-            console.log(publicKey)
-            const response = await axios.post(`${BACKEND_URL}/v1/worker/signin`, {
-                signature,
-                publicKey: publicKey?.toString()
-            });
-
-            localStorage.setItem("workerToken", response.data.token);
-        } catch (error) {
-            console.error("Backend worker signin fixed:", error);
-            // Don't crash the app if backend is not available
-        } finally {
-            setSigningIn(false);
-        }
+    if (localStorage.getItem("token")) {
+        return true;
     }
-
-    useEffect(() => {
-        if (mounted && publicKey) {
-            // Only auto-sign if user type is already selected
-            const hasCreatorToken = localStorage.getItem("token");
-            const hasWorkerToken = localStorage.getItem("workerToken");
-            
-            if (hasCreatorToken || hasWorkerToken) {
-                // User already signed in, just set the user type
-                if (hasCreatorToken) {
-                    onUserTypeSelect('creator');
-                } else {
-                    onUserTypeSelect('worker');
-                }
-            } else {
-                // Show user type selection modal
-                setShowUserTypeModal(true);
-            }
-        }
-    }, [publicKey, mounted]);
-
-    useEffect(() => {
-        if (mounted && !publicKey) {
-            // Clear tokens when wallet disconnects
-            localStorage.removeItem("token");
-            localStorage.removeItem("workerToken");
-        }
-    }, [publicKey, mounted]);
-
-    if (!mounted) {
-        return <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
-            <div className="text-2xl pl-4 flex justify-center pt-3">
-                DojoPay
-            </div>
-            <div className="text-xl pr-4 pb-2">
-                <div className="w-20 h-10 bg-gray-200 rounded animate-pulse"></div>
-            </div>
-        </div>
+    setSigningIn(true);
+    try {
+        const message = new TextEncoder().encode("Sign into DojoPay as a creator");
+        const signature = await signMessage?.(message);
+        const response = await axios.post(`${BACKEND_URL}/v1/user/signin`, {
+            signature,
+            publicKey: publicKey?.toString()
+        });
+        localStorage.setItem("token", response.data.token);
+        return true;
+    } catch (error) {
+        console.error("Backend signin failed:", error);
+        return false;
+    } finally {
+        setSigningIn(false);
     }
+}
 
-    return <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
-        <div className="text-2xl pl-4 flex justify-center pt-3">
-            DojoPay
-        </div>
+async function signAndSendWorker(): Promise<boolean> {
+    if (!publicKey) {
+        return false;
+    }
+    if (localStorage.getItem("workerToken")) {
+        return true;
+    }
+    setSigningIn(true);
+    try {
+        const message = new TextEncoder().encode("Sign into DojoPay as a worker");
+        const signature = await signMessage?.(message);
+        const response = await axios.post(`${BACKEND_URL}/v1/worker/signin`, {
+            signature,
+            publicKey: publicKey?.toString()
+        });
+        localStorage.setItem("workerToken", response.data.token);
+        return true;
+    } catch (error) {
+        console.error("Backend worker signin failed:", error);
+        return false;
+    } finally {
+        setSigningIn(false);
+    }
+}
+
+  useEffect(() => {
+    if (mounted && publicKey) {
+      // Only auto-sign if user type is already selected
+      const hasCreatorToken = localStorage.getItem("token");
+      const hasWorkerToken = localStorage.getItem("workerToken");
+
+      if (hasCreatorToken || hasWorkerToken) {
+        // User already signed in, just set the user type
+        if (hasCreatorToken) {
+          onUserTypeSelect("creator");
+        } else {
+          onUserTypeSelect("worker");
+        }
+      } else {
+        // Show user type selection modal
+        setShowUserTypeModal(true);
+      }
+    }
+  }, [publicKey, mounted]);
+
+  useEffect(() => {
+    if (mounted && !publicKey) {
+      // Clear tokens when wallet disconnects
+      localStorage.removeItem("token");
+      localStorage.removeItem("workerToken");
+    }
+  }, [publicKey, mounted]);
+
+  if (!mounted) {
+    return (
+      <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
+        <div className="text-2xl pl-4 flex justify-center pt-3">DojoPay</div>
         <div className="text-xl pr-4 pb-2">
-            {publicKey ? <WalletDisconnectButton /> : <WalletMultiButton />}
+          <div className="w-20 h-10 bg-gray-200 rounded animate-pulse"></div>
         </div>
-        <UserTypeModal 
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
+      <div className="text-2xl pl-4 flex justify-center pt-3">DojoPay</div>
+      <div className="text-xl pr-4 pb-2">
+        {publicKey ? <WalletDisconnectButton /> : <WalletMultiButton />}
+      </div>
+      {/* <UserTypeModal 
             isOpen={showUserTypeModal}
             onClose={() => setShowUserTypeModal(false)}
             onSelectType={(type) => {
@@ -129,6 +128,29 @@ export const Appbar = ({ onUserTypeSelect }: { onUserTypeSelect: (type: 'creator
             onCreatorSignIn={signAndSend}
             onWorkerSignIn={signAndSendWorker}
             signingIn={signingIn}
-        />
+        /> */}
+      <UserTypeModal
+        isOpen={showUserTypeModal}
+        onClose={() => {
+          if (!signingIn) {
+            setShowUserTypeModal(false);
+          }
+        }}
+        onSelectType={() => {}} // No-op since we handle this after sign-in
+        onCreatorSignIn={async () => {
+          await signAndSend();
+          // Only close modal and set user type after successful sign-in
+          onUserTypeSelect("creator");
+          setShowUserTypeModal(false);
+        }}
+        onWorkerSignIn={async () => {
+          await signAndSendWorker();
+          // Only close modal and set user type after successful sign-in
+          onUserTypeSelect("worker");
+          setShowUserTypeModal(false);
+        }}
+        signingIn={signingIn}
+      />
     </div>
-}
+  );
+};
