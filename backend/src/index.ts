@@ -15,7 +15,8 @@ const allowedOrigins = [
     'http://localhost:3002',
     'http://localhost:5173',
     'http://localhost:5174',
-    // Add your Vercel frontend URL here after deployment
+    // Production URLs
+    'https://dojopay.vercel.app',
     process.env.FRONTEND_URL
 ].filter(Boolean);
 
