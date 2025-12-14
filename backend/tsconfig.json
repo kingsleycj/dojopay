@@ -4,7 +4,6 @@
     "outDir": "./dist",
     "module": "nodenext",
     "target": "esnext",
-    "types": ["node"],
     "sourceMap": true,
     "strict": false,
     "jsx": "react-jsx",
