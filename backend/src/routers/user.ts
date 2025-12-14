@@ -1,3 +1,4 @@
+import nacl from "tweetnacl";
 import "dotenv/config";
 import { Task } from "@prisma/client";
 import { Router } from "express";
@@ -5,14 +6,19 @@ import jwt from "jsonwebtoken";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { createTaskInput } from "../types/types.js";
-import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { authMiddleware, workerAuthMiddleware } from "../middlewares/auth.middleware.js";
 import { prismaClient } from "../lib/prisma.js";
-
+import { Connection, PublicKey, Transaction, clusterApiUrl } from "@solana/web3.js";
 import { JWT_SECRET } from "../index.js";
 import { ta } from "zod/locales";
+import { TOTAL_DECIMALS } from "../config.js";
+
+const PARENT_WALLET_ADDRESS = "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont";
 
 const DEFAULT_TITLE = "Select your preferred choice";
 const router = Router();
+
+const connection = new Connection(process.env.RPC_URL || "https://api.devnet.solana.com");
 
 const s3Client = new S3Client({
   credentials: {
@@ -23,37 +29,52 @@ const s3Client = new S3Client({
 });
 
 // signin
-router.post("/signin", async (req, res) => {
-  const hardcodedWalletAddress = "4iWViiZVDB65WWTFMHrdyWxBgVNAjn26gBa3edqvawAo";
+router.post("/signin", async(req, res) => {
+    const { publicKey, signature } = req.body;
+    const message = new TextEncoder().encode("Sign into mechanical turks");
 
-  const existingUser = await prismaClient.user.findFirst({
-    where: {
-      address: hardcodedWalletAddress,
-    },
-  });
+    const result = nacl.sign.detached.verify(
+        message,
+        new Uint8Array(signature.data),
+        new PublicKey(publicKey).toBytes(),
+    );
 
-  if (!existingUser) {
-    const user = await prismaClient.user.create({
-      data: {
-        address: hardcodedWalletAddress,
-      },
-    });
-    const token = jwt.sign(
-      {
-        userId: user.id,
-      },
-      JWT_SECRET
-    );
-    res.json({ token });
-  } else {
-    const token = jwt.sign(
-      {
-        userId: existingUser.id,
-      },
-      JWT_SECRET
-    );
-    res.json({ token });
-  }
+
+    if (!result) {
+        return res.status(411).json({
+            message: "Incorrect signature"
+        })
+    }
+
+    const existingUser = await prismaClient.user.findFirst({
+        where: {
+            address: publicKey
+        }
+    })
+
+    if (existingUser) {
+        const token = jwt.sign({
+            userId: existingUser.id
+        }, JWT_SECRET)
+
+        res.json({
+            token
+        })
+    } else {
+        const user = await prismaClient.user.create({
+            data: {
+                address: publicKey,
+            }
+        })
+
+        const token = jwt.sign({
+            userId: user.id
+        }, JWT_SECRET)
+
+        res.json({
+            token
+        })
+    }
 });
 
 // get presigned url
@@ -69,11 +90,14 @@ router.get("/presignedUrl", authMiddleware, async (req, res) => {
   const { url, fields } = await createPresignedPost(s3Client, {
     Bucket: bucketName,
     Key: `dojo/${userId}/${Math.random()}/image.jpg`,
-    Conditions: [["content-length-range", 0, 500 * 1024 * 1024]],
+    Conditions: [
+        ["content-length-range", 0, 50 * 1024 * 1024],
+        ["starts-with", "$Content-Type", "image/"],
+    ],
     Fields: {
-      success_action_status: "201",
-      "Content-Type": "image/jpeg",
-    },
+        success_action_status: "201",
+        // Content-Type will be set by the client based on the selected file
+      },
     Expires: 3600,
   });
   // console.log(url, fields)
@@ -86,60 +110,150 @@ router.get("/presignedUrl", authMiddleware, async (req, res) => {
 
 // create task
 router.post("/task", authMiddleware, async (req, res) => {
-  //@ts-ignore
-  const userId = req.userId;
-  const body = req.body;
+    //@ts-ignore
+    const userId = req.userId
+    // validate the inputs from the user;
+    const body = req.body;
 
-  const parseData = createTaskInput.safeParse(body);
+    const parseData = createTaskInput.safeParse(body);
 
-  if (!parseData.success) {
-    return res.status(400).json({
-      message: "You've sent the wrong inputs",
-      error: parseData.error.message,
-    });
-  }
-
-  // parse the signature here to ensure the person has paid $XX
-
-  try {
-    const taskResponse = await prismaClient.$transaction(
-      async (tx): Promise<Task> => {
-        if (!userId) {
-          throw new Error("User ID is required");
+    const user = await prismaClient.user.findFirst({
+        where: {
+            id: Number(userId)
         }
+    })
 
-        const createdTask = await tx.task.create({
-          data: {
-            title: parseData.data.title ?? DEFAULT_TITLE,
-            amount: "1",
-            signature: parseData.data.signature ?? null,
-            user_id: userId,
-          },
-        });
+    if (!parseData.success) {
+        return res.status(411).json({
+            message: "You've sent the wrong inputs"
+        })
+    }
 
-        await tx.option.createMany({
-          data: parseData.data.options.map((x: { imageUrl: string }) => ({
-            image_url: x.imageUrl,
-            task_id: createdTask.id,
-          })),
+    let transaction = await connection.getTransaction(parseData.data.signature, {
+        maxSupportedTransactionVersion: 1
+    });
+
+    console.log("Transaction found:", transaction);
+    console.log("Signature being checked:", parseData.data.signature);
+
+    // If transaction not found, wait a bit and retry
+    if (!transaction) {
+        console.log("Transaction not found initially, waiting 3 seconds...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        transaction = await connection.getTransaction(parseData.data.signature, {
+            maxSupportedTransactionVersion: 1
         });
-        return createdTask;
-      }
+        
+        console.log("Retry transaction found:", transaction);
+        
+        if (!transaction) {
+            return res.status(411).json({
+                message: "Transaction not found on blockchain"
+            })
+        }
+    }
+
+    // Check if transaction transferred the correct amount (0.1 SOL = 100000000 lamports)
+    const postBalances = transaction?.meta?.postBalances || [];
+    const preBalances = transaction?.meta?.preBalances || [];
+    
+    console.log("Transaction balance details:", {
+        postBalances,
+        preBalances,
+        accountKeys: transaction?.transaction?.message?.accountKeys,
+        staticAccountKeys: transaction?.transaction?.message?.staticAccountKeys,
+        accountKeysFromGet: transaction?.transaction?.message?.getAccountKeys()
+    });
+
+    // Find the parent wallet's balance change - try different ways to access account keys
+    let accountKeys = transaction?.transaction?.message?.accountKeys;
+    if (!accountKeys) {
+        accountKeys = transaction?.transaction?.message?.staticAccountKeys;
+    }
+    if (!accountKeys) {
+        const keys = transaction?.transaction?.message?.getAccountKeys();
+        accountKeys = keys ? Array.from(keys) : [];
+    }
+
+    if (!accountKeys || accountKeys.length === 0) {
+        console.log("No account keys found in transaction");
+        return res.status(411).json({
+            message: "Transaction signature/amount incorrect - no account keys found"
+        })
+    }
+
+    const parentWalletIndex = accountKeys.findIndex(
+        key => key.toString() === PARENT_WALLET_ADDRESS
     );
 
-    res.json({
-      id: taskResponse.id,
-    });
-  } catch (error: any) {
-    if (error.code === "P2002" && error.meta?.target?.includes("signature")) {
-      return res.status(409).json({
-        message: "A task with this signature already exists",
-        error: "Duplicate signature",
-      });
+    if (parentWalletIndex === -1 || parentWalletIndex === undefined) {
+        console.log("Parent wallet not found in transaction");
+        return res.status(411).json({
+            message: "Transaction signature/amount incorrect - parent wallet not found"
+        })
     }
-    throw error;
-  }
-});
+
+    const balanceChange = (postBalances[parentWalletIndex] ?? 0) - (preBalances[parentWalletIndex] ?? 0);
+    
+    if (balanceChange !== 100000000) {
+        console.log("Balance check failed:", {
+            parentWalletIndex,
+            postBalance: postBalances[parentWalletIndex],
+            preBalance: preBalances[parentWalletIndex],
+            balanceChange,
+            expected: 100000000
+        });
+        return res.status(411).json({
+            message: "Transaction signature/amount incorrect"
+        })
+    }
+
+    if (transaction?.transaction.message.getAccountKeys().get(1)?.toString() !== PARENT_WALLET_ADDRESS) {
+        return res.status(411).json({
+            message: "Transaction sent to wrong address"
+        })
+    }
+
+    if (transaction?.transaction.message.getAccountKeys().get(0)?.toString() !== user?.address) {
+        return res.status(411).json({
+            message: "Transaction sent to wrong address"
+        })
+    }
+    // was this money paid by this user address or a different address?
+
+    // parse the signature here to ensure the person has paid 0.1 SOL
+    // const transaction = Transaction.from(parseData.data.signature);
+
+    try {
+        const task = await prismaClient.task.create({
+            data: {
+                title: parseData.data.title ?? DEFAULT_TITLE,
+                amount: 0.1 * TOTAL_DECIMALS,
+                //TODO: Signature should be unique in the table else people can reuse a signature
+                signature: parseData.data.signature,
+                user_id: Number(userId)
+            }
+        });
+
+        await prismaClient.option.createMany({
+            data: parseData.data.options.map(x => ({
+                image_url: x.imageUrl,
+                task_id: task.id
+            }))
+        })
+
+        res.json({
+            id: task.id
+        })
+    } catch (error) {
+        console.error("Database error:", error);
+        res.status(500).json({
+            message: "Failed to create task"
+        });
+    }
+
+})
 
 // get task
 router.get("/task", authMiddleware, async (req, res) => {
@@ -174,6 +288,7 @@ router.get("/task", authMiddleware, async (req, res) => {
     },
     include: {
       option: true,
+      worker: true,
     },
   });
 
@@ -182,7 +297,7 @@ router.get("/task", authMiddleware, async (req, res) => {
     {
       count: number;
       option: {
-        imageurl: string;
+        imageUrl: string;
       };
     }
   > = {};
@@ -193,7 +308,7 @@ router.get("/task", authMiddleware, async (req, res) => {
       result[option.id] = {
         count: 0,
         option: {
-          imageurl: option.image_url || "",
+          imageUrl: option.image_url || "",
         },
       };
     }
@@ -207,6 +322,15 @@ router.get("/task", authMiddleware, async (req, res) => {
 
   res.json({
     result,
+    taskDetails: {
+      title: taskDetails.title
+    },
+    submissions: responses.map(r => ({
+        workerId: r.worker_id,
+        workerAddress: r.worker.address,
+        optionId: r.option_id,
+        amount: r.amount,
+    }))
   });
 });
 

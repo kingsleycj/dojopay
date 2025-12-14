@@ -5,6 +5,10 @@ export const createTaskInput = z.object({
         imageUrl: z.string(),
     })),
     title: z.string().optional(),
-    // amount: z.string(),
     signature: z.string(),
+})
+
+export const createSubmissionInput = z.object({
+    taskId: z.string(),
+    selection: z.string(),
 })

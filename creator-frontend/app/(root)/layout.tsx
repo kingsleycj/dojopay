@@ -6,7 +6,6 @@ import {
     WalletModalProvider
 } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
-import "./globals.css";
 
 // Default styles that can be overridden by your app
 require('@solana/wallet-adapter-react-ui/styles.css');
@@ -16,10 +15,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const network = WalletAdapterNetwork.Devnet;
+  const network = WalletAdapterNetwork.Mainnet;
 
   // You can also provide a custom RPC endpoint.
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  const endpoint = clusterApiUrl(network);
 
   const wallets = useMemo(
       () => [],
@@ -27,16 +26,12 @@ export default function RootLayout({
   );
 
     return (
-    <html lang="en">
-      <body>
-        <ConnectionProvider endpoint={endpoint}>
-            <WalletProvider wallets={wallets} autoConnect>
-                <WalletModalProvider>
-                    {children}
-                </WalletModalProvider>
-            </WalletProvider>
-        </ConnectionProvider>
-      </body>
-    </html>
+    <ConnectionProvider endpoint={endpoint}>
+        <WalletProvider wallets={wallets} autoConnect>
+            <WalletModalProvider>
+                {children}
+            </WalletModalProvider>
+        </WalletProvider>
+    </ConnectionProvider>
   );
 }
