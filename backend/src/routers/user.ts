@@ -156,25 +156,16 @@ router.post("/task", authMiddleware, async (req, res) => {
 
     // Check if transaction transferred the correct amount (0.1 SOL = 100000000 lamports)
     const postBalances = transaction?.meta?.postBalances || [];
-    const preBalances = transaction?.meta?.preBalances || [];
     
     console.log("Transaction balance details:", {
         postBalances,
-        preBalances,
-        accountKeys: transaction?.transaction?.message?.accountKeys,
-        staticAccountKeys: transaction?.transaction?.message?.staticAccountKeys,
-        accountKeysFromGet: transaction?.transaction?.message?.getAccountKeys()
+        preBalances: transaction?.meta?.preBalances || [],
+        accountKeys: transaction?.transaction?.message?.getAccountKeys()
     });
 
-    // Find the parent wallet's balance change - try different ways to access account keys
-    let accountKeys = transaction?.transaction?.message?.accountKeys;
-    if (!accountKeys) {
-        accountKeys = transaction?.transaction?.message?.staticAccountKeys;
-    }
-    if (!accountKeys) {
-        const keys = transaction?.transaction?.message?.getAccountKeys();
-        accountKeys = keys ? Array.from(keys) : [];
-    }
+    // Find the parent wallet's balance change - use the correct API
+    const keys = transaction?.transaction?.message?.getAccountKeys();
+    const accountKeys = keys ? (keys as unknown as any[]).map(k => k) : [];
 
     if (!accountKeys || accountKeys.length === 0) {
         console.log("No account keys found in transaction");
@@ -191,11 +182,20 @@ router.post("/task", authMiddleware, async (req, res) => {
         console.log("Parent wallet not found in transaction");
         return res.status(411).json({
             message: "Transaction signature/amount incorrect - parent wallet not found"
-        })
+        });
     }
 
+    const preBalances = transaction?.meta?.preBalances || [];
     const balanceChange = (postBalances[parentWalletIndex] ?? 0) - (preBalances[parentWalletIndex] ?? 0);
     
+    console.log("Balance change details:", {
+        parentWalletIndex,
+        postBalance: postBalances[parentWalletIndex],
+        preBalance: preBalances[parentWalletIndex],
+        balanceChange,
+        expected: 100000000
+    });
+
     if (balanceChange !== 100000000) {
         console.log("Balance check failed:", {
             parentWalletIndex,

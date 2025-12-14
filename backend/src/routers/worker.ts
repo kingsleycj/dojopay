@@ -8,7 +8,7 @@ import { getNextTask } from "../db.js";
 import { createSubmissionInput } from "../types/types.js";
 import { TOTAL_DECIMALS } from "../config.js";
 export const WORKER_JWT_SECRET = JWT_SECRET + "worker";
-import { privateKey } from "../privateKey";
+import { privateKey } from "../privateKey.js";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 const connection = new Connection(process.env.RPC_URL ?? "");
@@ -186,7 +186,7 @@ router.post("/payout", workerAuthMiddleware, async (req, res) => {
         SystemProgram.transfer({
             fromPubkey: new PublicKey("2KeovpYvrgpziaDsq8nbNMP4mc48VNBVXb5arbqrg9Cq"),
             toPubkey: new PublicKey(worker.address),
-            lamports: 1000_000_000 * worker.pending_amount / TOTAL_DECIMALS,
+            lamports: Number((1000000000n * BigInt(worker.pending_amount)) / BigInt(TOTAL_DECIMALS)),
         })
     );
 
