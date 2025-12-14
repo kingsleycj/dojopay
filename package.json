@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --watch src --ext ts --exec \"npx tsx src/index.ts\"",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "dev": "nodemon --watch backend/src --ext ts --exec \"npx tsx backend/src/index.ts\"",
+    "build": "npm install && cd backend && tsc",
+    "start": "node backend/dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
