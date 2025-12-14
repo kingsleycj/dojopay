@@ -48,14 +48,14 @@ function App() {
 
     if (userType === 'worker') {
         return (
-            <div className="min-h-screen flex flex-col">
-                <Appbar onUserTypeSelect={setUserType} />
-                <div className="flex-grow pt-16">
-                    <WorkerView />
-                </div>
-                <Footer />
+        <div className="min-h-screen flex flex-col">
+            <Appbar onUserTypeSelect={setUserType} />
+            <div className="flex-grow pt-16">
+                <WorkerView />
             </div>
-        );
+            <Footer />
+        </div>
+    );
     }
 
     if (userType === 'creator') {
@@ -63,7 +63,7 @@ function App() {
         return (
             <div className="min-h-screen flex flex-col">
                 <Appbar onUserTypeSelect={setUserType} />
-                <div className="flex-grow flex justify-center pt-24">
+                <div className="flex-grow pt-16 flex justify-center">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto"></div>
                     </div>
@@ -77,8 +77,8 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <ToastContainer />
             <Appbar onUserTypeSelect={setUserType} />
-            <div className="flex-grow flex justify-center pt-24">
-                <div className="max-w-screen-lg">
+            <div className="flex-grow pt-16 flex justify-center">
+                <div className="max-w-screen-lg w-full">
                     <Hero />
                     {userType === 'creator' && <Upload />}
                 </div>

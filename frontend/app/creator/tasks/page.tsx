@@ -38,7 +38,7 @@ export default function TasksPage() {
         return (
             <div className="min-h-screen flex flex-col">
                 <Appbar onUserTypeSelect={setUserType} />
-                <div className="flex-grow flex justify-center pt-24">
+                <div className="flex-grow pt-16 flex justify-center">
                     <div className="text-center">
                         <h1 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h1>
                         <p className="text-gray-600">Please sign in as a creator to access this page.</p>
@@ -52,10 +52,12 @@ export default function TasksPage() {
     return (
         <div className="min-h-screen flex flex-col">
             <Appbar onUserTypeSelect={setUserType} />
-            <div className="flex flex-grow pt-16">
-                <CreatorSidebar activeView="tasks" onViewChange={() => {}} />
-                <div className="flex-grow ml-64">
-                    <TasksView />
+            <div className="flex-grow pt-16">
+                <div className="flex flex-col lg:flex-row">
+                    <CreatorSidebar activeView="tasks" onViewChange={() => {}} />
+                    <div className="flex-grow lg:ml-64">
+                        <TasksView />
+                    </div>
                 </div>
             </div>
             <Footer />

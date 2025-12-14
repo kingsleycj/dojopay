@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { BACKEND_URL } from "@/utils";
 import { UserTypeModal } from "./UserTypeModal";
+import { MobileMenu } from "./MobileMenu";
 
 export const Appbar = ({
   onUserTypeSelect,
@@ -18,10 +19,23 @@ export const Appbar = ({
   const [mounted, setMounted] = useState(false);
   const [showUserTypeModal, setShowUserTypeModal] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userType, setUserType] = useState<"creator" | "worker" | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    // Determine user type from tokens
+    const hasCreatorToken = localStorage.getItem("token");
+    const hasWorkerToken = localStorage.getItem("workerToken");
+    if (hasCreatorToken) {
+      setUserType("creator");
+    } else if (hasWorkerToken) {
+      setUserType("worker");
+    }
+  }, [publicKey]);
 
 async function signAndSend(): Promise<boolean> {
     if (!publicKey) {
@@ -104,20 +118,38 @@ async function signAndSendWorker(): Promise<boolean> {
   if (!mounted) {
     return (
       <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
-        <div className="text-2xl pl-4 flex justify-center pt-3">DojoPay</div>
-        <div className="text-xl pr-4 pb-2">
-          <div className="w-20 h-10 bg-gray-200 rounded animate-pulse"></div>
+        <div className="text-xl sm:text-2xl pl-2 sm:pl-4 flex justify-center pt-3">
+          DojoPay
+        </div>
+        <div className="text-xl pr-2 sm:pr-4 pb-2">
+          <div className="w-16 sm:w-20 h-10 bg-gray-200 rounded animate-pulse"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
-      <div className="text-2xl pl-4 flex justify-center pt-3">DojoPay</div>
-      <div className="text-xl pr-4 pb-2">
-        {publicKey ? <WalletDisconnectButton /> : <WalletMultiButton />}
-      </div>
+    <>
+      <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
+        <div className="flex items-center">
+          {/* Hamburger menu for mobile */}
+          {userType && (
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 mr-2"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
+          <div className="text-xl sm:text-2xl pl-2 sm:pl-4 flex justify-center pt-3">
+            DojoPay
+          </div>
+        </div>
+        <div className="text-xl pr-2 sm:pr-4 pb-2">
+          {publicKey ? <WalletDisconnectButton /> : <WalletMultiButton />}
+        </div>
       {/* <UserTypeModal 
             isOpen={showUserTypeModal}
             onClose={() => setShowUserTypeModal(false)}
@@ -129,6 +161,16 @@ async function signAndSendWorker(): Promise<boolean> {
             onWorkerSignIn={signAndSendWorker}
             signingIn={signingIn}
         /> */}
+      </div>
+      
+      {/* Mobile Menu */}
+      <MobileMenu 
+        isOpen={mobileMenuOpen} 
+        onClose={() => setMobileMenuOpen(false)} 
+        userType={userType}
+      />
+      
+      {/* UserTypeModal */}
       <UserTypeModal
         isOpen={showUserTypeModal}
         onClose={() => {
@@ -138,19 +180,21 @@ async function signAndSendWorker(): Promise<boolean> {
         }}
         onSelectType={() => {}} // No-op since we handle this after sign-in
         onCreatorSignIn={async () => {
-          await signAndSend();
-          // Only close modal and set user type after successful sign-in
-          onUserTypeSelect("creator");
-          setShowUserTypeModal(false);
+          const success = await signAndSend();
+          if (success) {
+            setUserType("creator");
+            setShowUserTypeModal(false);
+          }
         }}
         onWorkerSignIn={async () => {
-          await signAndSendWorker();
-          // Only close modal and set user type after successful sign-in
-          onUserTypeSelect("worker");
-          setShowUserTypeModal(false);
+          const success = await signAndSendWorker();
+          if (success) {
+            setUserType("worker");
+            setShowUserTypeModal(false);
+          }
         }}
         signingIn={signingIn}
       />
-    </div>
+    </>
   );
 };

@@ -44,8 +44,8 @@ export const WorkerView = () => {
     
     if (loading) {
         return (
-            <div className="h-screen flex justify-center flex-col">
-                <div className="w-full flex justify-center text-2xl">
+            <div className="h-screen flex justify-center items-center">
+                <div className="w-full flex justify-center text-lg sm:text-2xl">
                     Loading...
                 </div>
             </div>
@@ -56,10 +56,10 @@ export const WorkerView = () => {
         return (
             <div className="min-h-screen flex flex-col">
                 <div className="flex-grow pt-16">
-                    <div className="max-w-screen-lg mx-auto p-6">
-                        <div className="text-center text-gray-500 mt-12">
-                            <p className="text-lg">No tasks available at the moment</p>
-                            <p className="text-sm mt-2">Check back later for new tasks</p>
+                    <div className="max-w-screen-lg mx-auto p-4 sm:p-6">
+                        <div className="text-center text-gray-500 mt-8 sm:mt-12">
+                            <p className="text-base sm:text-lg">No tasks available at the moment</p>
+                            <p className="text-sm sm:text-base mt-2">Check back later for new tasks</p>
                         </div>
                     </div>
                 </div>
@@ -70,19 +70,19 @@ export const WorkerView = () => {
     return (
         <div className="min-h-screen flex flex-col">
             <div className="flex-grow pt-16">
-                <div className="max-w-screen-lg mx-auto p-6">
+                <div className="max-w-screen-lg mx-auto p-4 sm:p-6">
                     {currentTask && (
-                        <div className="mb-6">
-                            <h2 className="text-2xl font-bold text-black text-center mb-2">
+                        <div className="mb-4 sm:mb-6">
+                            <h2 className="text-xl sm:text-2xl font-bold text-black text-center mb-2">
                                 {currentTask.title}
                             </h2>
-                            <p className="text-center text-gray-600">
+                            <p className="text-sm sm:text-base text-center text-gray-600">
                                 Select your preferred option
                             </p>
                         </div>
                     )}
                     
-                    <div className="flex flex-wrap justify-center gap-4 mb-8">
+                    <div className="flex flex-wrap justify-center gap-2 sm:gap-4 mb-6 sm:mb-8">
                         {currentTask?.options.map(option => (
                             <Option
                                 onSelect={async () => {
@@ -116,9 +116,9 @@ export const WorkerView = () => {
                     
                     {submitting && (
                         <div className="flex justify-center">
-                            <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-6 py-4 shadow-sm">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500 border-r-2 border-green-400"></div>
-                                <span className="text-gray-700 font-medium">Submitting your choice...</span>
+                            <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
+                                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-purple-500 border-r-2 border-green-400"></div>
+                                <span className="text-xs sm:text-sm sm:text-base text-gray-700 font-medium">Submitting your choice...</span>
                             </div>
                         </div>
                     )}
@@ -142,18 +142,18 @@ function Option({imageUrl, onSelect}: {
     };
 
     if (hasError) {
-        return <div className="p-4 border rounded-lg m-2 bg-white shadow-sm">
-            <div className="p-2 w-full max-w-xs rounded-md border-2 border-gray-300 flex items-center justify-center bg-gray-100">
+        return <div className="p-2 sm:p-4 border rounded-lg m-1 sm:m-2 bg-white shadow-sm">
+            <div className="p-2 sm:p-4 w-full max-w-xs sm:max-w-sm rounded-md border-2 border-gray-300 flex items-center justify-center bg-gray-100">
                 <div className="text-center text-gray-500">
-                    <div className="text-sm">Image Not Available</div>
+                    <div className="text-xs sm:text-sm">Image Not Available</div>
                 </div>
             </div>
         </div>;
     }
 
-    return <div className="p-4 border rounded-lg m-2 bg-white shadow-sm">
+    return <div className="p-2 sm:p-4 border rounded-lg m-1 sm:m-2 bg-white shadow-sm">
         <img 
-            className={"p-2 w-full max-w-xs rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"} 
+            className={"p-1 sm:p-2 w-full max-w-xs sm:max-w-sm rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"} 
             src={imageUrl}
             onError={handleImageError}
             alt="Option"

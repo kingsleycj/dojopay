@@ -53,31 +53,31 @@ export const TasksView = () => {
     }
 
     return (
-        <div className="max-w-6xl mx-auto p-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-6">Your Tasks</h1>
+        <div className="max-w-6xl mx-auto p-4 sm:p-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">Your Tasks</h1>
             
             {tasks.length === 0 ? (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
                     <div className="text-center text-gray-500">
                         <div className="mb-4">
-                            <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                             </svg>
                         </div>
-                        <h2 className="text-xl font-semibold text-gray-700 mb-2">No Tasks Yet</h2>
-                        <p className="text-gray-600 mb-4">You haven't created any tasks yet. Go to "Create Task" to get started!</p>
+                        <h2 className="text-lg sm:text-xl font-semibold text-gray-700 mb-2">No Tasks Yet</h2>
+                        <p className="text-sm sm:text-base text-gray-600 mb-4">You haven't created any tasks yet. Go to "Create Task" to get started!</p>
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     {tasks.map((task) => (
                         <div key={task.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-                            <div className="p-6">
-                                <h3 className="text-lg font-semibold text-gray-800 mb-2 line-clamp-2">{task.title}</h3>
+                            <div className="p-4 sm:p-6">
+                                <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 line-clamp-2">{task.title}</h3>
                                 
-                                <div className="flex items-center justify-between mb-4">
-                                    <span className="text-2xl font-bold text-purple-600">{lamportsToSol(task.amount, 1)} SOL</span>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                                    <span className="text-lg sm:text-2xl font-bold text-purple-600">{lamportsToSol(task.amount, 1)} SOL</span>
+                                    <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-medium ${
                                         task.status === 'completed' 
                                             ? 'bg-green-100 text-green-800' 
                                             : task.status === 'pending'
@@ -88,7 +88,7 @@ export const TasksView = () => {
                                     </span>
                                 </div>
                                 
-                                <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
+                                <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
                                     <span>{task.totalSubmissions} submissions</span>
                                     <span>{task.createdAt ? new Date(task.createdAt).toLocaleDateString() : 'No date'}</span>
                                 </div>
@@ -110,12 +110,22 @@ export const TasksView = () => {
                                     )}
                                 </div>
                                 
-                                <button 
-                                    onClick={() => router.push(`/creator/task/${task.id}`)}
-                                    className="mt-4 w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors font-medium"
-                                >
-                                    View Details
-                                </button>
+                                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                    <button
+                                        onClick={() => router.push(`/creator/task/${task.id}`)}
+                                        className="flex-1 px-3 sm:px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs sm:text-sm font-medium"
+                                    >
+                                        View Details
+                                    </button>
+                                    {task.status === 'pending' && (
+                                        <button
+                                            onClick={() => router.push(`/creator/task/${task.id}/edit`)}
+                                            className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-xs sm:text-sm font-medium"
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ))}

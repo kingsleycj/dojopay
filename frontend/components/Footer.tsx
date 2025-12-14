@@ -1,10 +1,10 @@
 export const Footer = () => {
     return (
-        <footer className="mt-16 py-8 border-t border-gray-200 relative z-50">
-            <div className="flex justify-center items-center gap-3 text-gray-600">
-                <span className="text-sm">Powered by</span>
+        <footer className="mt-8 sm:mt-16 py-6 sm:py-8 border-t border-gray-200">
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-3 text-gray-600">
+                <span className="text-xs sm:text-sm">Powered by</span>
                 <div className="flex items-center gap-2">
-                    <svg className="w-7 h-7" viewBox="0 0 397.7 311.7" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="w-5 h-5 sm:w-7 sm:h-7" viewBox="0 0 397.7 311.7" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <defs>
                             <linearGradient id="solanaGradient" x1="360.879" y1="351.455" x2="141.213" y2="-69.2936" gradientUnits="userSpaceOnUse">
                                 <stop offset="0" stopColor="#00FFA3"/>

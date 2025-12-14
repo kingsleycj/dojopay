@@ -123,28 +123,28 @@ export const Upload = () => {
 
     return <div className="w-full">
         {/* Task Title Section */}
-        <div className="mb-8">
-            <label className="block text-lg font-semibold text-gray-800 mb-3">Task Title</label>
+        <div className="mb-6 sm:mb-8">
+            <label className="block text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3">Task Title</label>
             <input 
                 onChange={(e) => setTitle(e.target.value)} 
                 type="text" 
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all" 
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all text-sm sm:text-base" 
                 placeholder="Enter a clear, descriptive title for your task..." 
                 required 
             />
         </div>
 
         {/* Images Section */}
-        <div className="mb-8">
-            <label className="block text-lg font-semibold text-gray-800 mb-3">Task Images</label>
-            <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-6">
-                <div className="flex flex-wrap gap-4">
+        <div className="mb-6 sm:mb-8">
+            <label className="block text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3">Task Images</label>
+            <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6">
+                <div className="flex flex-wrap gap-2 sm:gap-4">
                     {images.map((image, index) => (
                         <div key={index} className="relative group">
-                            <img className="w-32 h-32 rounded-lg object-cover border border-gray-200 shadow-sm" src={image} alt="Task option" />
+                            <img className="w-24 h-24 sm:w-32 sm:h-32 rounded-lg object-cover border border-gray-200 shadow-sm" src={image} alt="Task option" />
                             <button
                                 onClick={() => setImages(images.filter((_, i) => i !== index))}
-                                className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute -top-2 -right-2 w-5 h-5 sm:w-6 sm:h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs sm:text-sm"
                             >
                                 ×
                             </button>
@@ -154,7 +154,7 @@ export const Upload = () => {
                         onImageAdded={(imageUrl) => setImages(i => [...i, imageUrl])} 
                     />
                 </div>
-                <p className="text-sm text-gray-500 mt-4">Add images that workers will choose from when completing your task</p>
+                <p className="text-xs sm:text-sm text-gray-500 mt-3 sm:mt-4">Add images that workers will choose from when completing your task</p>
             </div>
         </div>
 
@@ -163,14 +163,14 @@ export const Upload = () => {
             <button 
                 onClick={txSignature ? onSubmit : () => setShowPaymentModal(true)} 
                 disabled={isSubmitting || !title.trim() || images.length === 0}
-                className={`px-8 py-3 rounded-lg font-semibold transition-all ${
+                className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
                     isSubmitting || !title.trim() || images.length === 0
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-purple-600 text-white hover:bg-purple-700 shadow-md hover:shadow-lg'
                 }`}
             > 
                 {isSubmitting ? (
-                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
@@ -184,28 +184,30 @@ export const Upload = () => {
 
         {/* Payment Confirmation Modal */}
         {showPaymentModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Confirm Payment</h3>
-                    <p className="text-gray-600 mb-6">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full mx-4">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Confirm Payment</h3>
+                    <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
                         Creating a task requires a payment of <span className="font-semibold text-purple-600">0.1 SOL</span>. 
                         This payment covers the task creation and worker rewards.
                     </p>
-                    <div className="flex gap-3">
+                    <div className="flex gap-2 sm:gap-3">
                         <button
                             onClick={() => setShowPaymentModal(false)}
-                            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                            className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
                         >
                             Cancel
                         </button>
                         <button
-                            onClick={() => {
-                                setShowPaymentModal(false);
-                                makePayment();
-                            }}
-                            className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                            onClick={makePayment}
+                            disabled={isSubmitting}
+                            className={`flex-1 px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors text-sm sm:text-base ${
+                                isSubmitting
+                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                            }`}
                         >
-                            Pay 0.1 SOL
+                            {isSubmitting ? 'Processing...' : 'Pay 0.1 SOL'}
                         </button>
                     </div>
                 </div>

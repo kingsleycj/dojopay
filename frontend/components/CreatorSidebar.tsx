@@ -45,25 +45,25 @@ export const CreatorSidebar = ({ activeView, onViewChange }: CreatorSidebarProps
     ];
 
     return (
-        <div className="w-64 bg-white border-r border-gray-200 fixed top-16 left-0 bottom-0 z-30">
-            <div className="p-6 pt-4 h-full overflow-y-auto">
+        <div className="w-64 bg-white border-r border-gray-200 fixed top-16 left-0 bottom-0 z-30 hidden lg:block">
+            <div className="p-4 sm:p-6 pt-4 h-full overflow-y-auto">
                 {/* Navigation Menu */}
-                <nav className="space-y-2">
+                <nav className="space-y-1">
                     {menuItems.map((item) => {
-                        const isActive = pathname === item.href || 
-                            (item.id === 'tasks' && pathname.startsWith('/creator/task/'));
+                        const isActive = pathname === item.href || (activeView && item.id === activeView);
                         return (
                             <Link
                                 key={item.id}
                                 href={item.href}
-                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                                onClick={() => onViewChange?.(item.id as any)}
+                                className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
                                     isActive
-                                        ? 'bg-blue-50 text-blue-600 border border-blue-200'
-                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-800'
+                                        ? 'bg-purple-100 text-purple-700'
+                                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                                 }`}
                             >
                                 {item.icon}
-                                <span className="font-medium">{item.label}</span>
+                                <span className="ml-3">{item.label}</span>
                             </Link>
                         );
                     })}

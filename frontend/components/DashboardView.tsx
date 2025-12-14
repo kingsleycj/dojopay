@@ -148,48 +148,48 @@ export const DashboardView = () => {
     const totalPages = Math.ceil(data.recentActivity.length / itemsPerPage);
 
     return (
-        <div className="max-w-7xl mx-auto p-6">
-            <h1 className="text-3xl font-bold text-gray-800 mb-6">Welcome, Awesome Creator</h1>
+        <div className="max-w-7xl mx-auto p-4 sm:p-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">Welcome, Awesome Creator</h1>
             
             {/* Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <div className="bg-blue-500 rounded-lg shadow-sm p-6 text-white">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+                <div className="bg-blue-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
                     <div>
-                        <p className="text-sm text-blue-100">Total Tasks</p>
-                        <p className="text-2xl font-bold">{data.overview.totalTasks}</p>
+                        <p className="text-xs sm:text-sm text-blue-100">Total Tasks</p>
+                        <p className="text-xl sm:text-2xl font-bold">{data.overview.totalTasks}</p>
                     </div>
                 </div>
 
-                <div className="bg-green-500 rounded-lg shadow-sm p-6 text-white">
+                <div className="bg-green-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
                     <div>
-                        <p className="text-sm text-green-100">Total Submissions</p>
-                        <p className="text-2xl font-bold">{data.overview.totalSubmissions}</p>
+                        <p className="text-xs sm:text-sm text-green-100">Total Submissions</p>
+                        <p className="text-xl sm:text-2xl font-bold">{data.overview.totalSubmissions}</p>
                     </div>
                 </div>
 
-                <div className="bg-purple-500 rounded-lg shadow-sm p-6 text-white">
+                <div className="bg-purple-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
                     <div>
-                        <p className="text-sm text-purple-100">Total Spent</p>
-                        <p className="text-2xl font-bold">{lamportsToSol(data.overview.totalSpent, 1)} SOL</p>
+                        <p className="text-xs sm:text-sm text-purple-100">Total Spent</p>
+                        <p className="text-xl sm:text-2xl font-bold">{lamportsToSol(data.overview.totalSpent, 1)} SOL</p>
                     </div>
                 </div>
 
-                <div className="bg-orange-500 rounded-lg shadow-sm p-6 text-white">
+                <div className="bg-orange-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
                     <div>
-                        <p className="text-sm text-orange-100">Avg Submissions</p>
-                        <p className="text-2xl font-bold">{data.overview.averageSubmissionsPerTask}</p>
+                        <p className="text-xs sm:text-sm text-orange-100">Avg Submissions</p>
+                        <p className="text-xl sm:text-2xl font-bold">{data.overview.averageSubmissionsPerTask}</p>
                     </div>
                 </div>
             </div>
 
             {/* Single Chart with Selector */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-semibold text-gray-800">Task Creation Analytics</h3>
-                    <div className="flex gap-2">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 space-y-4 sm:space-y-0">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-800">Task Creation Analytics</h3>
+                    <div className="flex flex-wrap gap-2">
                         <button
                             onClick={() => setChartView('daily')}
-                            className={`px-3 py-1 rounded text-sm font-medium ${
+                            className={`px-3 py-1 rounded text-xs sm:text-sm font-medium ${
                                 chartView === 'daily'
                                     ? 'bg-purple-500 text-white'
                                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -199,7 +199,7 @@ export const DashboardView = () => {
                         </button>
                         <button
                             onClick={() => setChartView('weekly')}
-                            className={`px-3 py-1 rounded text-sm font-medium ${
+                            className={`px-3 py-1 rounded text-xs sm:text-sm font-medium ${
                                 chartView === 'weekly'
                                     ? 'bg-purple-500 text-white'
                                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -209,7 +209,7 @@ export const DashboardView = () => {
                         </button>
                         <button
                             onClick={() => setChartView('monthly')}
-                            className={`px-3 py-1 rounded text-sm font-medium ${
+                            className={`px-3 py-1 rounded text-xs sm:text-sm font-medium ${
                                 chartView === 'monthly'
                                     ? 'bg-purple-500 text-white'
                                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -219,24 +219,24 @@ export const DashboardView = () => {
                         </button>
                     </div>
                 </div>
-                <HistogramChart data={getChartData()} color="#8B5CF6" height={300} />
+                <HistogramChart data={getChartData()} color="#8B5CF6" height={250} />
             </div>
 
             {/* Recent Activity */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Activity</h3>
-                <div className="space-y-3">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4">Recent Activity</h3>
+                <div className="space-y-2 sm:space-y-3">
                     {data.recentActivity.length === 0 ? (
                         <p className="text-gray-500 text-center py-4">No recent activity</p>
                     ) : (
                         <>
                             {paginatedActivity.map((activity) => (
-                                <div key={activity.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                    <div>
-                                        <h4 className="font-medium text-gray-800">{activity.title}</h4>
-                                        <p className="text-sm text-gray-600">ID: #{activity.id}</p>
+                                <div key={activity.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-gray-50 rounded-lg space-y-2 sm:space-y-0">
+                                    <div className="flex-1">
+                                        <h4 className="font-medium text-gray-800 text-sm sm:text-base line-clamp-2">{activity.title}</h4>
+                                        <p className="text-xs sm:text-sm text-gray-600">ID: #{activity.id}</p>
                                     </div>
-                                    <div className="text-right">
+                                    <div className="flex sm:flex-col items-end sm:items-end space-x-2 sm:space-x-0 sm:space-y-1">
                                         <span className={`inline-block px-2 py-1 text-xs rounded-full ${
                                             activity.status === 'completed' 
                                                 ? 'bg-green-100 text-green-800' 
@@ -244,7 +244,7 @@ export const DashboardView = () => {
                                         }`}>
                                             {activity.status}
                                         </span>
-                                        <p className="text-sm text-gray-600 mt-1">{activity.submissions} submissions</p>
+                                        <p className="text-xs sm:text-sm text-gray-600">{activity.submissions} submissions</p>
                                     </div>
                                 </div>
                             ))}
@@ -255,7 +255,7 @@ export const DashboardView = () => {
                                     <button
                                         onClick={() => setActivityPage(Math.max(0, activityPage - 1))}
                                         disabled={activityPage === 0}
-                                        className={`px-3 py-1 rounded text-sm ${
+                                        className={`px-3 py-1 rounded text-xs sm:text-sm ${
                                             activityPage === 0
                                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                                 : 'bg-purple-500 text-white hover:bg-purple-600'
@@ -263,13 +263,13 @@ export const DashboardView = () => {
                                     >
                                         Previous
                                     </button>
-                                    <span className="text-sm text-gray-600">
+                                    <span className="text-xs sm:text-sm text-gray-600">
                                         Page {activityPage + 1} of {totalPages}
                                     </span>
                                     <button
                                         onClick={() => setActivityPage(Math.min(totalPages - 1, activityPage + 1))}
                                         disabled={activityPage === totalPages - 1}
-                                        className={`px-3 py-1 rounded text-sm ${
+                                        className={`px-3 py-1 rounded text-xs sm:text-sm ${
                                             activityPage === totalPages - 1
                                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                                 : 'bg-purple-500 text-white hover:bg-purple-600'
