@@ -1,1 +1,1 @@
-export const TOTAL_DECIMALS = 1000000;
+export const TOTAL_DECIMALS = 1000000000;

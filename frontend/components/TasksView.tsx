@@ -21,7 +21,7 @@ interface Task {
 // Helper function to convert lamports to SOL
 const lamportsToSol = (lamports: string): string => {
     const lamportsNum = parseInt(lamports);
-    const sol = lamportsNum / 1000000; // 1 SOL = 1 million lamports
+    const sol = lamportsNum / 1000000000; // 1 SOL = 1 billion lamports
     return sol.toFixed(2); // Show 2 decimal places
 };
 

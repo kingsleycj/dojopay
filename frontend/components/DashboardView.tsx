@@ -169,7 +169,7 @@ export const DashboardView = () => {
                 <div className="bg-purple-500 rounded-lg shadow-sm p-6 text-white">
                     <div>
                         <p className="text-sm text-purple-100">Total Spent</p>
-                        <p className="text-2xl font-bold">{(Number(data.overview.totalSpent) / 1000000).toFixed(2)} SOL</p>
+                        <p className="text-2xl font-bold">{(Number(data.overview.totalSpent) / 1000000000).toFixed(2)} SOL</p>
                     </div>
                 </div>
 
