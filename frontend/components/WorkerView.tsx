@@ -90,9 +90,9 @@ export const WorkerView = () => {
                                     
                                     setSubmitting(true);
                                     try {
-                                        await axios.post(`${BACKEND_URL}/v1/worker/submit`, {
+                                        await axios.post(`${BACKEND_URL}/v1/worker/submission`, {
                                             taskId: currentTask.id,
-                                            optionId: option.id
+                                            selection: option.id
                                         }, {
                                             headers: {
                                                 "Authorization": `Bearer ${localStorage.getItem("workerToken")}`
