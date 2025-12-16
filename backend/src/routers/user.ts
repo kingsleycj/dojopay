@@ -244,7 +244,8 @@ router.post("/task", authMiddleware, async (req, res) => {
                 amount: 0.1 * TOTAL_DECIMALS,
                 //TODO: Signature should be unique in the table else people can reuse a signature
                 signature: parseData.data.signature,
-                user_id: Number(userId)
+                user_id: Number(userId),
+                ...(parseData.data.expirationDate && { expiresAt: new Date(parseData.data.expirationDate) }),
             }
         });
 
@@ -338,20 +339,20 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
     const completedTasks = tasks.filter(task => task.done === true).length;
     const pendingTasks = tasks.filter(task => task.done === false).length;
 
-    // Since we don't have createdAt field, distribute tasks across recent periods based on actual data
+    // Use actual createdAt dates for daily stats
     const dailyStats = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
       
-      // Count tasks and submissions for this specific date
-      // For now, distribute tasks across the last few days based on their IDs
-      const tasksOnThisDate = tasks.filter((task, index) => {
-        if (i === 0) return index < 2; // Today: 2 most recent tasks
-        if (i === 1) return index >= 2 && index < 4; // Yesterday: next 2 tasks  
-        if (i === 2) return index >= 4 && index < 5; // 2 days ago: 1 task
-        return false; // No tasks on earlier dates
+      // Count tasks and submissions created on this specific date
+      const tasksOnThisDate = tasks.filter(task => {
+        // Handle both cases: with and without createdAt field
+        const taskDate = task.createdAt 
+          ? new Date(task.createdAt).toISOString().split('T')[0]
+          : new Date().toISOString().split('T')[0]; // Fallback to today for now
+        return taskDate === dateStr;
       });
       
       const submissionsOnThisDate = tasksOnThisDate.reduce((sum, task) => sum + task._count.submissions, 0);
@@ -507,6 +508,84 @@ router.get("/task", authMiddleware, async (req, res) => {
         amount: r.amount.toString(),
     }))
   });
+});
+
+// update task
+router.put("/task/:id", authMiddleware, async (req, res) => {
+    try {
+        const taskId = parseInt(req.params.id);
+        const userId = req.userId;
+        const { title, expirationDate } = req.body;
+
+        // Verify task belongs to user and is pending
+        const existingTask = await prismaClient.task.findFirst({
+            where: {
+                id: taskId,
+                user_id: userId,
+                done: false
+            }
+        });
+
+        if (!existingTask) {
+            return res.status(404).json({
+                message: "Task not found or cannot be edited"
+            });
+        }
+
+        const updatedTask = await prismaClient.task.update({
+            where: { id: taskId },
+            data: {
+                title: title || existingTask.title,
+                ...(expirationDate && { expiresAt: new Date(expirationDate) })
+            }
+        });
+
+        res.json({
+            message: "Task updated successfully",
+            task: updatedTask
+        });
+    } catch (error) {
+        console.error("Error updating task:", error);
+        res.status(500).json({
+            message: "Failed to update task"
+        });
+    }
+});
+
+// get single task
+router.get("/task/:id", authMiddleware, async (req, res) => {
+    try {
+        const taskId = parseInt(req.params.id);
+        const userId = req.userId;
+
+        const task = await prismaClient.task.findFirst({
+            where: {
+                id: taskId,
+                user_id: userId
+            },
+            include: {
+                options: true,
+                _count: {
+                    select: {
+                        submissions: true,
+                    },
+                },
+            },
+        });
+
+        if (!task) {
+            return res.status(404).json({
+                message: "Task not found"
+            });
+        }
+
+        res.json(task);
+    } catch (error) {
+        console.error("Error fetching task:", error);
+        res.status(500).json({
+            message: "Failed to fetch task"
+        });
+    }
 });
 
 export default router;

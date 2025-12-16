@@ -3,6 +3,7 @@ import { BACKEND_URL, CLOUDFRONT_URL } from "@/utils";
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { showToast } from "./Toast";
+import { CountdownTimer } from "./CountdownTimer";
 
 interface Task {
     id: number;
@@ -13,6 +14,8 @@ interface Task {
         image_url: string;
         task_id: number;
     }[];
+    expiresAt?: string;
+    createdAt: string;
 }
 
 export const WorkerView = () => {
@@ -77,9 +80,14 @@ export const WorkerView = () => {
                             <h2 className="text-xl sm:text-2xl font-bold text-black text-center mb-2">
                                 {currentTask.title}
                             </h2>
-                            <p className="text-sm sm:text-base text-center text-gray-600">
+                            <p className="text-sm sm:text-base text-center text-gray-600 mb-3">
                                 Select your preferred option
                             </p>
+                            {currentTask.expiresAt && (
+                                <div className="flex justify-center mb-2">
+                                    <CountdownTimer expiresAt={currentTask.expiresAt} onExpire={() => fetchTasks()} />
+                                </div>
+                            )}
                         </div>
                     )}
                     

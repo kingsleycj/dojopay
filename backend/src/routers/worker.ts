@@ -38,8 +38,8 @@ router.post("/signin", async(req, res) => {
     );
 
     if (!result) {
-        return res.status(411).json({
-            message: "Incorrect signature"
+        return res.status(401).json({
+            message: "Invalid signature"
         })
     }
 
@@ -51,7 +51,7 @@ router.post("/signin", async(req, res) => {
 
     if (existingUser) {
         const token = jwt.sign({
-            userId: existingUser.id
+            workerId: existingUser.id
         }, WORKER_JWT_SECRET)
 
         res.json({
@@ -68,7 +68,7 @@ router.post("/signin", async(req, res) => {
         });
 
         const token = jwt.sign({
-            userId: user.id
+            workerId: user.id
         }, WORKER_JWT_SECRET)
 
         res.json({
@@ -84,18 +84,32 @@ router.get("/nextTask", workerAuthMiddleware, async (req, res) => {
   const userId = req.userId;
 
   if (!userId) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: "You're not logged in!" });
   }
 
-  const task = await getNextTask(Number(userId));
+  try {
+    const task = await getNextTask(Number(userId));
 
-  if (!task) {
-    res.status(404).json({
-      message: "No available tasks for you to review",
-    });
-  } else {
-    res.status(200).json({
-      task,
+    if (!task) {
+      res.status(404).json({
+        message: "No tasks available",
+      });
+    } else {
+      res.status(200).json({
+        id: task.id,
+        title: task.title,
+        amount: task.amount.toString(),
+        options: task.options.map(opt => ({
+          id: opt.id,
+          imageUrl: opt.image_url
+        })),
+        totalSubmissions: task._count?.submissions || 0
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      message: "Failed to fetch next task",
+      error: error instanceof Error ? error.message : "Unknown error"
     });
   }
 });
@@ -106,11 +120,58 @@ router.post("/submission", workerAuthMiddleware, async (req, res) => {
   const body = req.body;
   const parsedBody = createSubmissionInput.safeParse(body);
 
-  if (parsedBody.success) {
-    const task = await getNextTask(Number(userId));
-    if (!task || task?.id !== Number(parsedBody.data.taskId)) {
+  if (!userId) {
+    return res.status(401).json({ message: "You're not logged in!" });
+  }
+
+  if (!parsedBody.success) {
+    return res.status(400).json({
+      message: "Invalid input",
+      error: parsedBody.error.message,
+    });
+  }
+
+  try {
+    // Check if task exists and is available
+    const task = await prismaClient.task.findFirst({
+      where: {
+        id: Number(parsedBody.data.taskId),
+        done: false,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: new Date() } }
+        ]
+      },
+      include: {
+        options: true
+      }
+    });
+
+    if (!task) {
       return res.status(400).json({
-        message: "Invalid task id",
+        message: "Task is no longer available"
+      });
+    }
+
+    // Check if option exists
+    const optionExists = task.options.some(opt => opt.id === Number(parsedBody.data.selection));
+    if (!optionExists) {
+      return res.status(400).json({
+        message: "Invalid option selected"
+      });
+    }
+
+    // Check for duplicate submission
+    const existingSubmission = await prismaClient.submission.findFirst({
+      where: {
+        task_id: Number(parsedBody.data.taskId),
+        worker_id: Number(userId)
+      }
+    });
+
+    if (existingSubmission) {
+      return res.status(403).json({
+        message: "You have already submitted for this task"
       });
     }
 
@@ -140,15 +201,17 @@ router.post("/submission", workerAuthMiddleware, async (req, res) => {
 
     const nextTask = await getNextTask(Number(userId));
 
-    res.json({
+    res.status(200).json({
+      message: "Submission successful",
+      submissionId: submission.id,
       nextTask,
       amount: amount.toString(),
-      message: "Submission received",
     });
-  } else {
-    return res.status(400).json({
-      message: "Invalid input",
-      error: parsedBody.error.message,
+  } catch (error) {
+    console.error('Submission error:', error);
+    res.status(500).json({ 
+      message: "Failed to submit response",
+      error: error instanceof Error ? error.message : "Unknown error"
     });
   }
 });
