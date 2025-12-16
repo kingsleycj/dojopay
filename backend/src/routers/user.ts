@@ -18,7 +18,7 @@ const PARENT_WALLET_ADDRESS = "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont";
 const DEFAULT_TITLE = "Select your preferred choice";
 const router = Router();
 
-const connection = new Connection(process.env.RPC_URL || "https://api.devnet.solana.com");
+const connection = new Connection(clusterApiUrl("devnet"));
 
 const s3Client = new S3Client({
   credentials: {
@@ -135,19 +135,28 @@ router.post("/task", authMiddleware, async (req, res) => {
 
     console.log("Transaction found:", transaction);
     console.log("Signature being checked:", parseData.data.signature);
+    console.log("RPC URL being used:", connection.rpcEndpoint);
 
-    // If transaction not found, wait a bit and retry
+    // If transaction not found, retry multiple times with increasing delays
     if (!transaction) {
-        console.log("Transaction not found initially, waiting 3 seconds...");
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log("Transaction not found initially, retrying...");
         
-        transaction = await connection.getTransaction(parseData.data.signature, {
-            maxSupportedTransactionVersion: 1
-        });
-        
-        console.log("Retry transaction found:", transaction);
+        for (let attempt = 1; attempt <= 5; attempt++) {
+            const delay = attempt * 2000; // 2s, 4s, 6s, 8s, 10s
+            console.log(`Retry attempt ${attempt}/5, waiting ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            transaction = await connection.getTransaction(parseData.data.signature, {
+                maxSupportedTransactionVersion: 1
+            });
+            
+            console.log(`Retry ${attempt} transaction found:`, !!transaction);
+            
+            if (transaction) break;
+        }
         
         if (!transaction) {
+            console.log("Transaction not found after all retries");
             return res.status(411).json({
                 message: "Transaction not found on blockchain"
             })
@@ -163,9 +172,12 @@ router.post("/task", authMiddleware, async (req, res) => {
         accountKeys: transaction?.transaction?.message?.getAccountKeys()
     });
 
-    // Find the parent wallet's balance change - use the correct API
-    const keys = transaction?.transaction?.message?.getAccountKeys();
-    const accountKeys = keys ? (keys as unknown as any[]).map(k => k) : [];
+    // Find the parent wallet's balance change - use correct API
+    const accountKeys = transaction?.transaction?.message?.accountKeys || [];
+    
+    console.log("Account keys found:", accountKeys);
+    console.log("Account keys type:", typeof accountKeys);
+    console.log("Account keys length:", accountKeys.length);
 
     if (!accountKeys || accountKeys.length === 0) {
         console.log("No account keys found in transaction");

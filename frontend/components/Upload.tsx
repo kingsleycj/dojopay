@@ -113,6 +113,10 @@ export const Upload = () => {
 
             setTxSignature(signature);
             showToast("Payment successful! Now you can submit the task.", "success");
+            setShowPaymentModal(false);
+            
+            // Wait a bit to ensure transaction is fully propagated
+            await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
             console.error("Payment failed:", error);
             showToast("Payment failed. Please try again.", "error");
@@ -204,7 +208,7 @@ export const Upload = () => {
                             className={`flex-1 px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors text-sm sm:text-base ${
                                 isSubmitting
                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                                    : 'bg-green-600 text-white hover:bg-green-700'
                             }`}
                         >
                             {isSubmitting ? 'Processing...' : 'Pay 0.1 SOL'}

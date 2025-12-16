@@ -4,6 +4,7 @@ import { DashboardView } from '@/components/DashboardView';
 import { CreatorSidebar } from '@/components/CreatorSidebar';
 import { Appbar } from '@/components/Appbar';
 import { Footer } from '@/components/Footer';
+import { ToastContainer } from '@/components/Toast';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 
@@ -51,6 +52,7 @@ export default function DashboardPage() {
 
     return (
         <div className="min-h-screen flex flex-col">
+            <ToastContainer />
             <Appbar onUserTypeSelect={setUserType} />
             <div className="flex-grow pt-16">
                 <div className="flex flex-col lg:flex-row">

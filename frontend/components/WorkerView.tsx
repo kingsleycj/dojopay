@@ -2,6 +2,7 @@
 import { BACKEND_URL, CLOUDFRONT_URL } from "@/utils";
 import axios from "axios";
 import { useEffect, useState } from "react";
+import { showToast } from "./Toast";
 
 interface Task {
     id: number;
@@ -91,18 +92,18 @@ export const WorkerView = () => {
                                     setSubmitting(true);
                                     try {
                                         await axios.post(`${BACKEND_URL}/v1/worker/submission`, {
-                                            taskId: currentTask.id,
-                                            selection: option.id
+                                            taskId: currentTask.id.toString(),
+                                            selection: option.id.toString()
                                         }, {
                                             headers: {
                                                 "Authorization": `Bearer ${localStorage.getItem("workerToken")}`
                                             }
                                         });
-                                        alert("Submission successful!");
+                                        showToast("Submission successful!", "success");
                                         await fetchTasks();
                                     } catch(e) {
                                         console.error("Submission failed:", e);
-                                        alert("Submission failed. Please try again.");
+                                        showToast("Submission failed. Please try again.", "error");
                                         setCurrentTask(null);
                                     } finally {
                                         setSubmitting(false);
