@@ -180,7 +180,7 @@ export const DashboardView = () => {
                 <div className="bg-purple-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
                     <div>
                         <p className="text-xs sm:text-sm text-purple-100">Total Spent</p>
-                        <p className="text-xl sm:text-2xl font-bold">{lamportsToSol(data.overview.totalSpent, 1)} SOL</p>
+                        <p className="text-xl sm:text-2xl font-bold">{lamportsToSol(data.overview.totalSpent)} SOL</p>
                     </div>
                 </div>
 

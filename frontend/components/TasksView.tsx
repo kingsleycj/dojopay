@@ -76,7 +76,7 @@ export const TasksView = () => {
                                 <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 line-clamp-2">{task.title}</h3>
                                 
                                 <div className="flex items-center justify-between mb-3 sm:mb-4">
-                                    <span className="text-lg sm:text-2xl font-bold text-purple-600">{lamportsToSol(task.amount, 1)} SOL</span>
+                                    <span className="text-lg sm:text-2xl font-bold text-purple-600">{lamportsToSol(task.amount)} SOL</span>
                                     <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-medium ${
                                         task.status === 'completed' 
                                             ? 'bg-green-100 text-green-800' 

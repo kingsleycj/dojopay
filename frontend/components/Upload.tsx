@@ -14,6 +14,7 @@ export const Upload = () => {
     const [txSignature, setTxSignature] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [expirationDate, setExpirationDate] = useState("");
     const router = useRouter();
     const { publicKey, sendTransaction } = useWallet();
     const { connection } = useConnection();
@@ -48,7 +49,8 @@ export const Upload = () => {
                     imageUrl: image,
                 })),
                 title,
-                signature: txSignature
+                signature: txSignature,
+                expirationDate: expirationDate || null
             };
             
             console.log("Submitting task with data:", requestData);
@@ -136,6 +138,18 @@ export const Upload = () => {
                 placeholder="Enter a clear, descriptive title for your task..." 
                 required 
             />
+        </div>
+
+        {/* Expiration Date Section */}
+        <div className="mb-6 sm:mb-8">
+            <label className="block text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3">Expiration Date (Optional)</label>
+            <input 
+                onChange={(e) => setExpirationDate(e.target.value)} 
+                type="datetime-local" 
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 transition-all text-sm sm:text-base" 
+                min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} // Minimum 1 hour from now
+            />
+            <p className="text-xs sm:text-sm text-gray-500 mt-2">Set when this task will expire. Workers won't see expired tasks.</p>
         </div>
 
         {/* Images Section */}
