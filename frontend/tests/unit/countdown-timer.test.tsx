@@ -17,7 +17,7 @@ describe('CountdownTimer Component', () => {
 
   it('should display time remaining correctly', () => {
     // Set current time to 2025-12-16 12:00:00 UTC
-    mockDateNow.mockReturnValue(new Date('2025-12-16T12:00:00Z').getTime());
+    vi.setSystemTime(new Date('2025-12-16T12:00:00Z'));
     
     // Target time is 2025-12-16 14:30:45 UTC (2h 30m 45s later)
     const targetTime = '2025-12-16T14:30:45Z';

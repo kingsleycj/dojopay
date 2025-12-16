@@ -295,6 +295,7 @@ router.get("/tasks", authMiddleware, async (req, res) => {
       status: task.done ? 'completed' : 'pending',
       totalSubmissions: task._count.submissions,
       createdAt: new Date().toISOString(), // Add current timestamp since no createdAt field in schema
+      expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
       options: task.options.map(option => ({
         id: option.id,
         imageUrl: option.image_url,
@@ -400,6 +401,7 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
         title: task.title,
         status: task.done ? 'completed' : (task._count.submissions > 0 ? 'completed' : 'pending'),
         createdAt: new Date().toISOString(), // Placeholder since no createdAt field
+        expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
         amount: task.amount.toString(),
         submissions: task._count.submissions,
       }));
@@ -499,7 +501,8 @@ router.get("/task", authMiddleware, async (req, res) => {
   res.json({
     result,
     taskDetails: {
-      title: taskDetails.title
+      title: taskDetails.title,
+      expiresAt: taskDetails.expiresAt ? taskDetails.expiresAt.toISOString() : null
     },
     submissions: responses.map(r => ({
         workerId: r.worker_id,
