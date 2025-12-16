@@ -9,9 +9,9 @@ import { createSubmissionInput } from "../types/types.js";
 import { TOTAL_DECIMALS } from "../config.js";
 export const WORKER_JWT_SECRET = JWT_SECRET + "worker";
 import { privateKey } from "../privateKey.js";
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction, clusterApiUrl } from "@solana/web3.js";
 import bs58 from "bs58";
-const connection = new Connection(process.env.RPC_URL ?? "");
+const connection = new Connection(clusterApiUrl("devnet"));
 const TOTAL_SUBMISSIONS = 100;
 
 prismaClient.$transaction(

@@ -12,7 +12,8 @@ import { WorkerView } from "@/components/WorkerView";
 import { CreatorSidebar } from "@/components/CreatorSidebar";
 import { DashboardView } from "@/components/DashboardView";
 import { TasksView } from "@/components/TasksView";
-import { ToastContainer, toast } from "react-toastify";
+import { ToastContainer } from "@/components/Toast";
+import { ToastContainer as ReactToastContainer, toast } from "react-toastify";
 
 function App() {
     const { publicKey, signMessage } = useWallet();
@@ -49,6 +50,7 @@ function App() {
     if (userType === 'worker') {
         return (
         <div className="min-h-screen flex flex-col">
+            <ToastContainer />
             <Appbar onUserTypeSelect={setUserType} />
             <div className="flex-grow pt-16">
                 <WorkerView />
@@ -62,6 +64,7 @@ function App() {
         // This will only show briefly before redirecting to /creator/dashboard
         return (
             <div className="min-h-screen flex flex-col">
+                <ToastContainer />
                 <Appbar onUserTypeSelect={setUserType} />
                 <div className="flex-grow pt-16 flex justify-center">
                     <div className="text-center">

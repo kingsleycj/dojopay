@@ -1,10 +1,11 @@
 'use client';
 
 import { lamportsToSol } from '../utils/convert';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { BACKEND_URL } from '../utils';
 import { HistogramChart } from './HistogramChart';
+import { showToast } from './Toast';
 
 interface DashboardData {
     overview: {
@@ -50,10 +51,15 @@ export const DashboardView = () => {
     const [loading, setLoading] = useState(true);
     const [chartView, setChartView] = useState<'daily' | 'weekly' | 'monthly'>('daily');
     const [activityPage, setActivityPage] = useState(0);
+    const [hasShownLoginToast, setHasShownLoginToast] = useState(false);
+    const hasFetchedRef = useRef(false);
     const itemsPerPage = 5;
 
     useEffect(() => {
         const fetchDashboardData = async () => {
+            if (hasFetchedRef.current) return; // Prevent multiple fetches completely
+            
+            hasFetchedRef.current = true;
             try {
                 const token = localStorage.getItem('token');
                 const response = await axios.get(`${BACKEND_URL}/v1/user/dashboard`, {
@@ -62,6 +68,10 @@ export const DashboardView = () => {
                     }
                 });
                 setData(response.data);
+                if (!hasShownLoginToast) {
+                    showToast('Login successful!', 'success');
+                    setHasShownLoginToast(true);
+                }
             } catch (error) {
                 console.error('Error fetching dashboard data:', error);
             } finally {
@@ -96,7 +106,7 @@ export const DashboardView = () => {
         switch (chartView) {
             case 'daily':
                 return data.dailyStats.slice(-7).map(stat => ({
-                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short' }),
+                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }),
                     value: stat.tasksCreated
                 }));
             case 'weekly':
