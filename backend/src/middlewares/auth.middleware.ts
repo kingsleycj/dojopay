@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { JWT_SECRET } from '../index.js';
 import { WORKER_JWT_SECRET } from '../routers/worker.js';
+import * as fs from 'fs';
 
 // Extend the Request interface to include userId
 declare global {

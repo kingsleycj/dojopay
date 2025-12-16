@@ -338,7 +338,7 @@ describe('Task Management Endpoints', () => {
         .get('/v1/user/task/1')
         .set('Authorization', `Bearer ${createMockToken(1)}`);
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(200);
     });
 
     it('should return 404 for non-existent task', async () => {

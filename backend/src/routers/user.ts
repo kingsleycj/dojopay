@@ -554,6 +554,7 @@ router.put("/task/:id", authMiddleware, async (req, res) => {
 
 // get single task
 router.get("/task/:id", authMiddleware, async (req, res) => {
+    console.log('Task endpoint called with ID:', req.params.id);
     try {
         const taskId = parseInt(req.params.id);
         const userId = req.userId;
@@ -579,7 +580,13 @@ router.get("/task/:id", authMiddleware, async (req, res) => {
             });
         }
 
-        res.json(task);
+        // Convert BigInt to string for JSON serialization
+        const taskResponse = {
+            ...task,
+            amount: task.amount.toString()
+        };
+
+        res.json(taskResponse);
     } catch (error) {
         console.error("Error fetching task:", error);
         res.status(500).json({

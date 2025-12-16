@@ -66,6 +66,14 @@ export default function EditTaskPage() {
     const fetchTask = async () => {
         try {
             const token = localStorage.getItem("token");
+            
+            if (!token) {
+                console.error('No authentication token found');
+                showToast('Please sign in to edit tasks', 'error');
+                router.push('/creator/dashboard');
+                return;
+            }
+            
             const response = await axios.get(`${BACKEND_URL}/v1/user/task/${taskId}`, {
                 headers: {
                     "Authorization": `Bearer ${token}`
@@ -79,9 +87,18 @@ export default function EditTaskPage() {
                 const date = new Date(response.data.expiresAt);
                 setExpirationDate(date.toISOString().slice(0, 16));
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error fetching task:', error);
-            showToast('Failed to load task', 'error');
+            
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                showToast('Please sign in to edit tasks', 'error');
+                router.push('/creator/dashboard');
+            } else if (error.response?.status === 404) {
+                showToast('Task not found', 'error');
+                router.push('/creator/tasks');
+            } else {
+                showToast('Failed to load task', 'error');
+            }
         } finally {
             setLoading(false);
         }
@@ -94,6 +111,13 @@ export default function EditTaskPage() {
 
         try {
             const token = localStorage.getItem("token");
+            
+            if (!token) {
+                showToast('Please sign in to update tasks', 'error');
+                router.push('/creator/dashboard');
+                return;
+            }
+            
             const updateData = {
                 title,
                 expirationDate: expirationDate || null

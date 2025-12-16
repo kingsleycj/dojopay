@@ -3,6 +3,7 @@ import userRouter from './routers/user.js'
 import workerRouter from './routers/worker.js'
 import cors from 'cors'
 import { connectDB, prismaClient } from './lib/prisma.js'
+import * as fs from 'fs'
 
 const app = express();
 app.use(express.json({ limit: '50mb', type: 'application/json' }));

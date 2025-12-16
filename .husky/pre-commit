@@ -5,13 +5,13 @@ echo "Running pre-commit hooks..."
 
 # Run only unit tests 
 echo "Running backend unit tests..."
-cd backend && npm run test:run || {
+cd backend && npm run test:run -- --reporter=basic 2>/dev/null || {
   echo "Backend unit tests failed"
   exit 1
 }
 
 echo "Running frontend tests..."
-cd ../frontend && npm run test:run || {
+cd ../frontend && npm run test:run -- --reporter=basic 2>/dev/null || {
   echo "Frontend tests failed"
   exit 1
 }
