@@ -7,11 +7,11 @@ export default defineConfig({
     setupFiles: ['./tests/setup.ts'],
     testTimeout: 10000,
     hookTimeout: 10000,
+    include: [
+      'tests/**/*.test.ts',
+      'tests/**/*.spec.ts',
+    ],
   },
-  include: [
-    'tests/**/*.test.ts',
-    'tests/**/*.spec.ts',
-  ],
   exclude: [
     'node_modules',
     'dist',
