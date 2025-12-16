@@ -25,10 +25,10 @@ export default defineConfig({
       'tests/**/*.spec.ts',
       'tests/**/*.spec.tsx',
     ],
+    exclude: [
+      'node_modules',
+      'dist',
+      '.next',
+    ],
   },
-  exclude: [
-    'node_modules',
-    'dist',
-    '.next',
-  ],
 });
