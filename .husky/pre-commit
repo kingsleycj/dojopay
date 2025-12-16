@@ -1,4 +1,19 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
 
-echo "
+echo "Running pre-commit hooks..."
+
+# Run only unit tests 
+echo "Running backend unit tests..."
+cd backend && npm run test:run || {
+  echo "Backend unit tests failed"
+  exit 1
+}
+
+echo "Running frontend tests..."
+cd ../frontend && npm run test:run || {
+  echo "Frontend tests failed"
+  exit 1
+}
+
+echo "Pre-commit checks passed!"
