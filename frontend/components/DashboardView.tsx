@@ -106,7 +106,7 @@ export const DashboardView = () => {
         switch (chartView) {
             case 'daily':
                 return data.dailyStats.slice(-7).map(stat => ({
-                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short' }),
+                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }),
                     value: stat.tasksCreated
                 }));
             case 'weekly':
