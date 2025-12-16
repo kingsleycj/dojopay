@@ -19,12 +19,12 @@ describe('CountdownTimer Component', () => {
     // Set current time to 2025-12-16 12:00:00 UTC
     mockDateNow.mockReturnValue(new Date('2025-12-16T12:00:00Z').getTime());
     
-    // Target time is 2025-12-16 13:00:00 UTC (1 hour later)
-    const targetTime = '2025-12-16T13:00:00Z';
+    // Target time is 2025-12-16 14:30:45 UTC (2h 30m 45s later)
+    const targetTime = '2025-12-16T14:30:45Z';
     
     render(<CountdownTimer expiresAt={targetTime} />);
     
-    // Should show time display (actual output shows hours, minutes, seconds)
+    // Should show hours, minutes, and seconds
     expect(screen.getByText(/h/)).toBeInTheDocument();
     expect(screen.getByText(/m/)).toBeInTheDocument();
     expect(screen.getByText(/s/)).toBeInTheDocument();

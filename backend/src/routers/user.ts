@@ -511,6 +511,54 @@ router.get("/task", authMiddleware, async (req, res) => {
 });
 
 // update task
+router.patch("/task/:id", authMiddleware, async (req, res) => {
+    try {
+        const taskId = parseInt(req.params.id);
+        const userId = req.userId;
+        const { title, expirationDate } = req.body;
+
+        // Verify task belongs to user and is pending
+        const existingTask = await prismaClient.task.findFirst({
+            where: {
+                id: taskId,
+                user_id: userId,
+                done: false
+            }
+        });
+
+        if (!existingTask) {
+            return res.status(404).json({
+                message: "Task not found or cannot be edited"
+            });
+        }
+
+        const updatedTask = await prismaClient.task.update({
+            where: { id: taskId },
+            data: {
+                title: title || existingTask.title,
+                ...(expirationDate && { expiresAt: new Date(expirationDate) })
+            }
+        });
+
+        // Convert BigInt to string for JSON serialization
+        const taskResponse = {
+            ...updatedTask,
+            amount: updatedTask.amount?.toString() || '0'
+        };
+
+        res.json({
+            message: "Task updated successfully",
+            task: taskResponse
+        });
+    } catch (error) {
+        console.error("Error updating task:", error);
+        res.status(500).json({
+            message: "Failed to update task"
+        });
+    }
+});
+
+// Also support PUT for backward compatibility
 router.put("/task/:id", authMiddleware, async (req, res) => {
     try {
         const taskId = parseInt(req.params.id);
@@ -540,9 +588,15 @@ router.put("/task/:id", authMiddleware, async (req, res) => {
             }
         });
 
+        // Convert BigInt to string for JSON serialization
+        const taskResponse = {
+            ...updatedTask,
+            amount: updatedTask.amount?.toString() || '0'
+        };
+
         res.json({
             message: "Task updated successfully",
-            task: updatedTask
+            task: taskResponse
         });
     } catch (error) {
         console.error("Error updating task:", error);

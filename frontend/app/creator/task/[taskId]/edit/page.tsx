@@ -184,7 +184,7 @@ export default function EditTaskPage() {
         );
     }
 
-    if (task.status !== 'pending') {
+    if (task.done === true) {
         return (
             <div className="min-h-screen flex flex-col">
                 <ToastContainer />
@@ -242,7 +242,7 @@ export default function EditTaskPage() {
                                 <div className="flex flex-wrap gap-2 sm:gap-4">
                                     {task.options.map((option, index) => (
                                         <div key={option.id} className="relative">
-                                            <img className="w-24 h-24 sm:w-32 sm:h-32 rounded-lg object-cover border border-gray-200 shadow-sm" src={option.imageUrl} alt={`Option ${index + 1}`} />
+                                            <img className="w-24 h-24 sm:w-32 sm:h-32 rounded-lg object-cover border border-gray-200 shadow-sm" src={option.image_url} alt={`Option ${index + 1}`} />
                                         </div>
                                     ))}
                                 </div>
