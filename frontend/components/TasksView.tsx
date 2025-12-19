@@ -5,6 +5,7 @@ import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { BACKEND_URL } from '../utils';
 import { lamportsToSol } from '../utils/convert';
+import { CountdownTimer } from './CountdownTimer';
 
 interface Task {
     id: number;
@@ -12,6 +13,7 @@ interface Task {
     amount: string;
     status: string;
     createdAt: string;
+    expiresAt: string | null;
     totalSubmissions: number;
     options: Array<{
         id: number;
@@ -34,8 +36,15 @@ export const TasksView = () => {
                     }
                 });
                 setTasks(response.data.tasks);
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error fetching tasks:', error);
+                // If authentication fails, clear token and redirect to landing page
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.log('Tasks authentication failed, clearing token and redirecting');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('workerToken');
+                    window.location.href = '/';
+                }
             } finally {
                 setLoading(false);
             }
@@ -71,7 +80,14 @@ export const TasksView = () => {
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     {tasks.map((task) => (
-                        <div key={task.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                        <div key={task.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow relative">
+                            {/* Countdown Timer in Top Right */}
+                            {task.expiresAt && (
+                                <div className="absolute top-3 right-3 z-10">
+                                    <CountdownTimer expiresAt={task.expiresAt} />
+                                </div>
+                            )}
+                            
                             <div className="p-4 sm:p-6">
                                 <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 line-clamp-2">{task.title}</h3>
                                 

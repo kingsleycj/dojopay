@@ -5,6 +5,7 @@ import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { BACKEND_URL } from '../utils';
 import { HistogramChart } from './HistogramChart';
+import { CountdownTimer } from './CountdownTimer';
 import { showToast } from './Toast';
 
 interface DashboardData {
@@ -37,6 +38,7 @@ interface DashboardData {
         title: string;
         status: string;
         createdAt: string;
+        expiresAt: string | null;
         amount: string;
         submissions: number;
     }>;
@@ -72,8 +74,15 @@ export const DashboardView = () => {
                     showToast('Login successful!', 'success');
                     setHasShownLoginToast(true);
                 }
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error fetching dashboard data:', error);
+                // If authentication fails, clear token and redirect to landing page
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.log('Dashboard authentication failed, clearing token and redirecting');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('workerToken');
+                    window.location.href = '/';
+                }
             } finally {
                 setLoading(false);
             }
@@ -245,6 +254,11 @@ export const DashboardView = () => {
                                     <div className="flex-1">
                                         <h4 className="font-medium text-gray-800 text-sm sm:text-base line-clamp-2">{activity.title}</h4>
                                         <p className="text-xs sm:text-sm text-gray-600">ID: #{activity.id}</p>
+                                        {activity.expiresAt && (
+                                            <div className="mt-2">
+                                                <CountdownTimer expiresAt={activity.expiresAt} compact={true} />
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex sm:flex-col items-end sm:items-end space-x-2 sm:space-x-0 sm:space-y-1">
                                         <span className={`inline-block px-2 py-1 text-xs rounded-full ${

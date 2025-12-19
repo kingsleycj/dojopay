@@ -1,17 +1,16 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
 
 echo "Running pre-commit hooks..."
 
 # Run only unit tests 
 echo "Running backend unit tests..."
-cd backend && npm run test:run || {
+cd backend && npm run test:run > /dev/null 2>&1 || {
   echo "Backend unit tests failed"
   exit 1
 }
 
 echo "Running frontend tests..."
-cd ../frontend && npm run test:run || {
+cd ../frontend && npm run test:run > /dev/null 2>&1 || {
   echo "Frontend tests failed"
   exit 1
 }

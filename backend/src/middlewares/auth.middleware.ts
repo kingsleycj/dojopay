@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { JWT_SECRET } from '../index.js';
 import { WORKER_JWT_SECRET } from '../routers/worker.js';
+import * as fs from 'fs';
 
 // Extend the Request interface to include userId
 declare global {
@@ -68,10 +69,10 @@ export function workerAuthMiddleware(
     : authHeader;
 
   try {
-    const decoded = jwt.verify(token, WORKER_JWT_SECRET) as JwtPayload & { userId: number };
+    const decoded = jwt.verify(token, WORKER_JWT_SECRET) as JwtPayload & { workerId: number };
     
-    if (decoded.userId) {
-      req.userId = decoded.userId;
+    if (decoded.workerId) {
+      req.userId = decoded.workerId;
       return next();
     } else {
       return res.status(403).json({

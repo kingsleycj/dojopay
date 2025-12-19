@@ -2,6 +2,7 @@
 import { BACKEND_URL, CLOUDFRONT_URL } from "@/utils";
 import axios from "axios";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { showToast } from "./Toast";
 import { CountdownTimer } from "./CountdownTimer";
 
@@ -19,6 +20,7 @@ interface Task {
 }
 
 export const WorkerView = () => {
+    const router = useRouter();
     const [currentTask, setCurrentTask] = useState<Task | null>(null);
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -32,17 +34,30 @@ export const WorkerView = () => {
                 }
             });
             console.log("Worker nextTask response:", response.data);
-            setCurrentTask(response.data.task);
-        } catch (error) {
-            setCurrentTask(null);
+            setCurrentTask(response.data);
+        } catch (error: any) {
+            // If authentication fails, clear token and redirect to landing page
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                console.log("Authentication failed, clearing token and redirecting");
+                localStorage.removeItem("workerToken");
+                window.location.href = "/";
+            } else {
+                setCurrentTask(null);
+            }
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        if (localStorage.getItem("workerToken")) {
+        const workerToken = localStorage.getItem("workerToken");
+        console.log("WorkerView useEffect - workerToken:", workerToken);
+        if (workerToken) {
             fetchTasks();
+        } else {
+            // Redirect to landing page if no token found
+            console.log("No worker token found, redirecting to landing page");
+            window.location.href = "/";
         }
     }, []);
     
@@ -109,10 +124,17 @@ export const WorkerView = () => {
                                         });
                                         showToast("Submission successful!", "success");
                                         await fetchTasks();
-                                    } catch(e) {
+                                    } catch(e: any) {
                                         console.error("Submission failed:", e);
-                                        showToast("Submission failed. Please try again.", "error");
-                                        setCurrentTask(null);
+                                        // If authentication fails, clear token and redirect to landing page
+                                        if (e.response?.status === 401 || e.response?.status === 403) {
+                                            console.log("Submission authentication failed, clearing token and redirecting");
+                                            localStorage.removeItem("workerToken");
+                                            window.location.href = "/";
+                                        } else {
+                                            showToast("Submission failed. Please try again.", "error");
+                                            setCurrentTask(null);
+                                        }
                                     } finally {
                                         setSubmitting(false);
                                     }

@@ -295,6 +295,7 @@ router.get("/tasks", authMiddleware, async (req, res) => {
       status: task.done ? 'completed' : 'pending',
       totalSubmissions: task._count.submissions,
       createdAt: new Date().toISOString(), // Add current timestamp since no createdAt field in schema
+      expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
       options: task.options.map(option => ({
         id: option.id,
         imageUrl: option.image_url,
@@ -400,6 +401,7 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
         title: task.title,
         status: task.done ? 'completed' : (task._count.submissions > 0 ? 'completed' : 'pending'),
         createdAt: new Date().toISOString(), // Placeholder since no createdAt field
+        expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
         amount: task.amount.toString(),
         submissions: task._count.submissions,
       }));
@@ -499,7 +501,8 @@ router.get("/task", authMiddleware, async (req, res) => {
   res.json({
     result,
     taskDetails: {
-      title: taskDetails.title
+      title: taskDetails.title,
+      expiresAt: taskDetails.expiresAt ? taskDetails.expiresAt.toISOString() : null
     },
     submissions: responses.map(r => ({
         workerId: r.worker_id,
@@ -511,6 +514,54 @@ router.get("/task", authMiddleware, async (req, res) => {
 });
 
 // update task
+router.patch("/task/:id", authMiddleware, async (req, res) => {
+    try {
+        const taskId = parseInt(req.params.id);
+        const userId = req.userId;
+        const { title, expirationDate } = req.body;
+
+        // Verify task belongs to user and is pending
+        const existingTask = await prismaClient.task.findFirst({
+            where: {
+                id: taskId,
+                user_id: userId,
+                done: false
+            }
+        });
+
+        if (!existingTask) {
+            return res.status(404).json({
+                message: "Task not found or cannot be edited"
+            });
+        }
+
+        const updatedTask = await prismaClient.task.update({
+            where: { id: taskId },
+            data: {
+                title: title || existingTask.title,
+                ...(expirationDate && { expiresAt: new Date(expirationDate) })
+            }
+        });
+
+        // Convert BigInt to string for JSON serialization
+        const taskResponse = {
+            ...updatedTask,
+            amount: updatedTask.amount?.toString() || '0'
+        };
+
+        res.json({
+            message: "Task updated successfully",
+            task: taskResponse
+        });
+    } catch (error) {
+        console.error("Error updating task:", error);
+        res.status(500).json({
+            message: "Failed to update task"
+        });
+    }
+});
+
+// Also support PUT for backward compatibility
 router.put("/task/:id", authMiddleware, async (req, res) => {
     try {
         const taskId = parseInt(req.params.id);
@@ -540,9 +591,15 @@ router.put("/task/:id", authMiddleware, async (req, res) => {
             }
         });
 
+        // Convert BigInt to string for JSON serialization
+        const taskResponse = {
+            ...updatedTask,
+            amount: updatedTask.amount?.toString() || '0'
+        };
+
         res.json({
             message: "Task updated successfully",
-            task: updatedTask
+            task: taskResponse
         });
     } catch (error) {
         console.error("Error updating task:", error);
@@ -554,6 +611,7 @@ router.put("/task/:id", authMiddleware, async (req, res) => {
 
 // get single task
 router.get("/task/:id", authMiddleware, async (req, res) => {
+    console.log('Task endpoint called with ID:', req.params.id);
     try {
         const taskId = parseInt(req.params.id);
         const userId = req.userId;
@@ -579,7 +637,13 @@ router.get("/task/:id", authMiddleware, async (req, res) => {
             });
         }
 
-        res.json(task);
+        // Convert BigInt to string for JSON serialization
+        const taskResponse = {
+            ...task,
+            amount: task.amount.toString()
+        };
+
+        res.json(taskResponse);
     } catch (error) {
         console.error("Error fetching task:", error);
         res.status(500).json({

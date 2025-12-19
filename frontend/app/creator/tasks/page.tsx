@@ -6,9 +6,11 @@ import { Appbar } from '@/components/Appbar';
 import { Footer } from '@/components/Footer';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useRouter } from 'next/navigation';
 
 export default function TasksPage() {
     const { publicKey } = useWallet();
+    const router = useRouter();
     const [userType, setUserType] = useState<'worker' | 'creator' | null>(null);
 
     useEffect(() => {
@@ -22,7 +24,9 @@ export default function TasksPage() {
                 } else if (workerToken) {
                     setUserType('worker');
                 } else {
-                    setUserType(null);
+                    // Redirect to landing page if no tokens found
+                    console.log("No tokens found, redirecting to landing page");
+                    window.location.href = "/";
                 }
             } else {
                 setUserType(null);
@@ -32,7 +36,7 @@ export default function TasksPage() {
         checkWalletConnection();
         const interval = setInterval(checkWalletConnection, 1000);
         return () => clearInterval(interval);
-    }, [publicKey]);
+    }, [publicKey, router]);
 
     if (userType !== 'creator') {
         return (
