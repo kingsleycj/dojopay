@@ -69,10 +69,10 @@ export function workerAuthMiddleware(
     : authHeader;
 
   try {
-    const decoded = jwt.verify(token, WORKER_JWT_SECRET) as JwtPayload & { userId: number };
+    const decoded = jwt.verify(token, WORKER_JWT_SECRET) as JwtPayload & { workerId: number };
     
-    if (decoded.userId) {
-      req.userId = decoded.userId;
+    if (decoded.workerId) {
+      req.userId = decoded.workerId;
       return next();
     } else {
       return res.status(403).json({

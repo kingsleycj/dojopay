@@ -74,8 +74,15 @@ export const DashboardView = () => {
                     showToast('Login successful!', 'success');
                     setHasShownLoginToast(true);
                 }
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error fetching dashboard data:', error);
+                // If authentication fails, clear token and redirect to landing page
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.log('Dashboard authentication failed, clearing token and redirecting');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('workerToken');
+                    window.location.href = '/';
+                }
             } finally {
                 setLoading(false);
             }

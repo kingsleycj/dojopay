@@ -264,7 +264,8 @@ describe('Dashboard and Analytics Endpoints', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.taskDetails).toEqual({
-        title: 'Test Task'
+        title: 'Test Task',
+        expiresAt: null
       });
 
       // Check results structure

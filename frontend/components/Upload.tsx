@@ -65,7 +65,7 @@ export const Upload = () => {
             console.log("Task submission response:", response.data);
             showToast("Task submitted successfully!", "success");
             router.push(`/creator/task/${response.data.id}`)
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to submit task:", error);
             if (axios.isAxiosError(error)) {
                 console.error("Axios error details:", {
@@ -78,6 +78,15 @@ export const Upload = () => {
                         headers: error.config?.headers
                     }
                 });
+                
+                // If authentication fails, clear token and redirect to landing page
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.log('Upload authentication failed, clearing token and redirecting');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('workerToken');
+                    window.location.href = '/';
+                    return;
+                }
             }
             showToast("Failed to submit task. Please try again.", "error");
         } finally {

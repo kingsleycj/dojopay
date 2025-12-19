@@ -36,8 +36,15 @@ export const TasksView = () => {
                     }
                 });
                 setTasks(response.data.tasks);
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error fetching tasks:', error);
+                // If authentication fails, clear token and redirect to landing page
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.log('Tasks authentication failed, clearing token and redirecting');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('workerToken');
+                    window.location.href = '/';
+                }
             } finally {
                 setLoading(false);
             }
