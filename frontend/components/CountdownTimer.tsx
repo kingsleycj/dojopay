@@ -66,7 +66,7 @@ export const CountdownTimer = ({ expiresAt, onExpire, compact = false }: Countdo
 
     if (timeLeft.expired) {
         return (
-            <div className={`flex items-center ${compact ? 'gap-0.5' : 'gap-1'} ${compact ? 'text-2xs' : 'text-xs'} text-red-600 font-medium bg-red-50 ${compact ? 'px-1 py-0.5' : 'px-2 py-1'} rounded-full ${compact ? 'border border-red-200' : ''}`}>
+            <div className={`inline-flex w-fit items-center ${compact ? 'gap-0.5' : 'gap-1'} ${compact ? 'text-2xs' : 'text-xs'} text-red-600 font-medium bg-red-50 ${compact ? 'px-1 py-0.5' : 'px-2 py-1'} rounded-full ${compact ? 'border border-red-200' : ''}`}>
                 <svg className={`flex-shrink-0 ${compact ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
@@ -89,7 +89,7 @@ export const CountdownTimer = ({ expiresAt, onExpire, compact = false }: Countdo
     } else if (totalSeconds <= 3600) { // Less than 1 hour
         colorClass = "text-yellow-600 bg-yellow-50 border-yellow-200";
     } else if (totalSeconds <= 86400) { // Less than 1 day
-        colorClass = "text-blue-600 bg-blue-50 border-blue-200";
+        colorClass = "text-gray-900 bg-[#fff7ed] border-[#fed7aa]";
     }
 
     // Compact display - show only most relevant time units
@@ -106,7 +106,7 @@ export const CountdownTimer = ({ expiresAt, onExpire, compact = false }: Countdo
     };
 
     return (
-        <div className={`flex items-center ${compact ? 'gap-0.5' : 'gap-1'} ${compact ? 'text-2xs' : 'text-xs'} font-medium ${compact ? 'px-1 py-0.5' : 'px-2 py-1'} rounded-full ${compact ? 'border' : ''} ${colorClass} ${compact ? 'inline-flex' : ''}`}>
+        <div className={`inline-flex w-fit items-center ${compact ? 'gap-0.5' : 'gap-1'} ${compact ? 'text-2xs' : 'text-xs'} font-medium ${compact ? 'px-1 py-0.5' : 'px-2 py-1'} rounded-full ${compact ? 'border' : ''} ${colorClass}`}>
             <svg className={`flex-shrink-0 ${compact ? 'w-2.5 h-2.5' : 'w-3 h-3'}`} fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
             </svg>

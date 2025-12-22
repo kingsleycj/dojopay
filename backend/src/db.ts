@@ -6,6 +6,10 @@ export const getNextTask = async (userId: number) => {
   const task = await prismaClient.task.findFirst({
     where: {
       done: false,
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date() } },
+      ],
       submissions: {
         none: {
           worker_id: userId,
@@ -16,6 +20,12 @@ export const getNextTask = async (userId: number) => {
       id: true,
       amount: true,
       title: true,
+      expiresAt: true,
+      _count: {
+        select: {
+          submissions: true,
+        },
+      },
       options: {
         select: {
           id: true,

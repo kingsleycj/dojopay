@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 interface CreatorSidebarProps {
     activeView?: 'dashboard' | 'home' | 'tasks' | 'create';
@@ -10,6 +11,12 @@ interface CreatorSidebarProps {
 
 export const CreatorSidebar = ({ activeView, onViewChange }: CreatorSidebarProps) => {
     const pathname = usePathname();
+    const [navigating, setNavigating] = useState<string | null>(null);
+
+    // Reset navigation state when pathname changes
+    useEffect(() => {
+        setNavigating(null);
+    }, [pathname]);
     
     const menuItems = [
         {
@@ -45,7 +52,7 @@ export const CreatorSidebar = ({ activeView, onViewChange }: CreatorSidebarProps
     ];
 
     return (
-        <div className="w-64 bg-white border-r border-gray-200 fixed top-16 left-0 bottom-0 z-30 hidden lg:block">
+        <div className="w-64 bg-black text-white border-r border-gray-200 fixed top-16 left-0 bottom-0 z-30 hidden lg:block">
             <div className="p-4 sm:p-6 pt-4 h-full overflow-y-auto">
                 {/* Navigation Menu */}
                 <nav className="space-y-1">
@@ -55,14 +62,23 @@ export const CreatorSidebar = ({ activeView, onViewChange }: CreatorSidebarProps
                             <Link
                                 key={item.id}
                                 href={item.href}
-                                onClick={() => onViewChange?.(item.id as any)}
-                                className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                                onClick={() => {
+                                    setNavigating(item.id);
+                                    onViewChange?.(item.id as any);
+                                }}
+                                className={`group flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-all duration-200 transform ${
                                     isActive
-                                        ? 'bg-purple-100 text-purple-700'
-                                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                                        ? 'bg-[#f97316] text-black scale-105 shadow-lg'
+                                        : navigating === item.id
+                                        ? 'text-gray-200 bg-white/10 scale-95'
+                                        : 'text-gray-300 hover:text-white hover:bg-white/5 hover:scale-105'
                                 }`}
                             >
-                                {item.icon}
+                                {navigating === item.id ? (
+                                    <div className="w-5 h-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                                ) : (
+                                    item.icon
+                                )}
                                 <span className="ml-3">{item.label}</span>
                             </Link>
                         );

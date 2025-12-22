@@ -6,7 +6,7 @@ interface ChartProps {
     height?: number;
 }
 
-export const BarChart = ({ data, color = '#8B5CF6', height = 200 }: ChartProps) => {
+export const BarChart = ({ data, color = '#f97316', height = 200 }: ChartProps) => {
     const maxValue = Math.max(...data.map(d => d.value), 1);
     
     return (
@@ -15,7 +15,7 @@ export const BarChart = ({ data, color = '#8B5CF6', height = 200 }: ChartProps) 
                 {data.map((item, index) => (
                     <div key={index} className="flex-1 flex flex-col items-center">
                         <div 
-                            className="w-full bg-purple-500 rounded-t transition-all duration-300 hover:opacity-80"
+                            className="w-full rounded-t transition-all duration-300 hover:opacity-80"
                             style={{ 
                                 height: `${(item.value / maxValue) * (height - 30)}px`,
                                 backgroundColor: color
@@ -34,7 +34,48 @@ export const BarChart = ({ data, color = '#8B5CF6', height = 200 }: ChartProps) 
     );
 };
 
-export const LineChart = ({ data, color = '#10B981', height = 200 }: ChartProps) => {
+interface DualBarChartProps {
+    data: Array<{ label: string; a: number; b: number }>;
+    aColor?: string;
+    bColor?: string;
+    height?: number;
+}
+
+export const DualBarChart = ({ data, aColor = '#f97316', bColor = '#111827', height = 220 }: DualBarChartProps) => {
+    const maxValue = Math.max(...data.flatMap((d) => [d.a, d.b]), 1);
+
+    return (
+        <div className="w-full" style={{ height: `${height}px` }}>
+            <div className="flex items-end justify-between h-full gap-2">
+                {data.map((item, index) => (
+                    <div key={index} className="flex-1 flex flex-col items-center">
+                        <div className="w-full flex items-end justify-center gap-1" style={{ height: `${height - 36}px` }}>
+                            <div
+                                className="w-1/2 rounded-t transition-all duration-300 hover:opacity-90"
+                                style={{
+                                    height: `${(item.a / maxValue) * (height - 36)}px`,
+                                    backgroundColor: aColor
+                                }}
+                            />
+                            <div
+                                className="w-1/2 rounded-t transition-all duration-300 hover:opacity-90"
+                                style={{
+                                    height: `${(item.b / maxValue) * (height - 36)}px`,
+                                    backgroundColor: bColor
+                                }}
+                            />
+                        </div>
+                        <div className="text-xs text-gray-600 mt-2 text-center truncate w-full">
+                            {item.label}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export const LineChart = ({ data, color = '#111827', height = 200 }: ChartProps) => {
     const maxValue = Math.max(...data.map(d => d.value), 1);
     const points = data.map((item, index) => {
         const x = (index / (data.length - 1)) * 100;

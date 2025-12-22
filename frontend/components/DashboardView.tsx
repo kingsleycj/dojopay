@@ -4,9 +4,10 @@ import { lamportsToSol } from '../utils/convert';
 import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { BACKEND_URL } from '../utils';
-import { HistogramChart } from './HistogramChart';
+import { DualBarChart } from './Chart';
 import { CountdownTimer } from './CountdownTimer';
 import { showToast } from './Toast';
+import { Coins, Gauge, Inbox, Layers3 } from 'lucide-react';
 
 interface DashboardData {
     overview: {
@@ -56,6 +57,52 @@ export const DashboardView = () => {
     const [hasShownLoginToast, setHasShownLoginToast] = useState(false);
     const hasFetchedRef = useRef(false);
     const itemsPerPage = 5;
+    const [solPriceUsd, setSolPriceUsd] = useState<number | null>(null);
+
+    useEffect(() => {
+        const cacheKey = 'dojopay_sol_price_usd_v1';
+        const cacheTtlMs = 60_000;
+
+        try {
+            const cachedRaw = sessionStorage.getItem(cacheKey);
+            if (cachedRaw) {
+                const cached = JSON.parse(cachedRaw) as { price: number; ts: number };
+                if (typeof cached?.price === 'number' && typeof cached?.ts === 'number') {
+                    if (Date.now() - cached.ts < cacheTtlMs) {
+                        setSolPriceUsd(cached.price);
+                        return;
+                    }
+                }
+            }
+        } catch {
+            // ignore
+        }
+
+        const controller = new AbortController();
+        fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
+            signal: controller.signal,
+            headers: {
+                'accept': 'application/json'
+            }
+        })
+            .then((r) => r.json())
+            .then((json) => {
+                const price = json?.solana?.usd;
+                if (typeof price === 'number' && Number.isFinite(price)) {
+                    setSolPriceUsd(price);
+                    try {
+                        sessionStorage.setItem(cacheKey, JSON.stringify({ price, ts: Date.now() }));
+                    } catch {
+                        // ignore
+                    }
+                }
+            })
+            .catch(() => {
+                // ignore
+            });
+
+        return () => controller.abort();
+    }, []);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -91,10 +138,20 @@ export const DashboardView = () => {
         fetchDashboardData();
     }, []);
 
+    // Move this useEffect here to prevent hook order changes
+    useEffect(() => {
+        if (activityPage === 0) return;
+        if (!data) return;
+        const maxPage = Math.max(0, Math.ceil(data.recentActivity.length / itemsPerPage) - 1);
+        if (activityPage > maxPage) {
+            setActivityPage(maxPage);
+        }
+    }, [data?.recentActivity.length, activityPage]);
+
     if (loading) {
         return (
             <div className="flex justify-center items-center h-screen">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f97316]"></div>
             </div>
         );
     }
@@ -159,116 +216,227 @@ export const DashboardView = () => {
         }
     };
 
+    const getCombinedActivityChartData = () => {
+        const tasks = getChartData();
+        const submissions = getSubmissionsChartData();
+        return tasks.map((t, i) => ({
+            label: t.label,
+            a: t.value,
+            b: submissions[i]?.value ?? 0
+        }));
+    };
+
+    const getSubmissionsChartData = () => {
+        switch (chartView) {
+            case 'daily':
+                return data.dailyStats.slice(-7).map(stat => ({
+                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }),
+                    value: stat.submissionsReceived
+                }));
+            case 'weekly':
+                return getChartData().map((w, i) => ({
+                    label: w.label,
+                    value: data.weeklyStats?.[i]?.submissionsReceived ?? 0
+                }));
+            case 'monthly':
+                return data.monthlyStats.slice(-6).map(stat => ({
+                    label: stat.month,
+                    value: 0
+                }));
+            default:
+                return [];
+        }
+    };
+
+    const totalSpentSolStr = lamportsToSol(data.overview.totalSpent);
+    const totalSpentSol = Number.parseFloat(totalSpentSolStr);
+    const totalSpentUsd = solPriceUsd && Number.isFinite(totalSpentSol) ? totalSpentSol * solPriceUsd : null;
+
+    const filteredRecentActivity = data.recentActivity.filter((activity) => {
+        if (!activity.expiresAt) return true;
+        const expiresAtMs = new Date(activity.expiresAt).getTime();
+        if (!Number.isFinite(expiresAtMs)) return true;
+        const hideAtMs = expiresAtMs + 24 * 60 * 60 * 1000;
+        return Date.now() < hideAtMs;
+    });
+
     // Paginated recent activity
-    const paginatedActivity = data.recentActivity.slice(
+    const paginatedActivity = filteredRecentActivity.slice(
         activityPage * itemsPerPage,
         (activityPage + 1) * itemsPerPage
     );
-    const totalPages = Math.ceil(data.recentActivity.length / itemsPerPage);
+    const totalPages = Math.ceil(filteredRecentActivity.length / itemsPerPage);
 
     return (
-        <div className="max-w-7xl mx-auto p-4 sm:p-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4 sm:mb-6">Welcome, Awesome Creator</h1>
-            
-            {/* Overview Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-                <div className="bg-blue-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
-                    <div>
-                        <p className="text-xs sm:text-sm text-blue-100">Total Tasks</p>
-                        <p className="text-xl sm:text-2xl font-bold">{data.overview.totalTasks}</p>
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6">
+            <div className="flex flex-col gap-3 mb-4 sm:mb-6">
+                <div>
+                    <div className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wider">Creator</div>
+                    <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Dashboard</h1>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1">Overview of tasks, submissions, and spend.</p>
+                </div>
+                <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm w-fit">
+                    <button
+                        onClick={() => setChartView('daily')}
+                        className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                            chartView === 'daily'
+                                ? 'bg-gray-900 text-white'
+                                : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                        Daily
+                    </button>
+                    <button
+                        onClick={() => setChartView('weekly')}
+                        className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                            chartView === 'weekly'
+                                ? 'bg-gray-900 text-white'
+                                : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                        Weekly
+                    </button>
+                    <button
+                        onClick={() => setChartView('monthly')}
+                        className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                            chartView === 'monthly'
+                                ? 'bg-gray-900 text-white'
+                                : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                        Monthly
+                    </button>
+                </div>
+            </div>
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 lg:mb-8">
+                <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-3 sm:p-4 lg:p-5">
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Tasks</p>
+                            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-1 truncate">{data.overview.totalTasks}</p>
+                        </div>
+                        <div className="h-8 w-8 sm:h-11 sm:w-11 rounded-xl bg-[#fff7ed] border border-[#fed7aa] flex items-center justify-center flex-shrink-0 ml-2">
+                            <Layers3 className="h-4 w-4 sm:h-5 sm:w-5 text-gray-900" />
+                        </div>
+                    </div>
+                    <div className="mt-2 sm:mt-4 text-xs sm:text-sm text-gray-600">
+                        <span className="font-semibold text-gray-900">{data.overview.completedTasks}</span> completed
+                        <span className="mx-1 sm:mx-2 text-gray-300">|</span>
+                        <span className="font-semibold text-gray-900">{data.overview.pendingTasks}</span> pending
                     </div>
                 </div>
 
-                <div className="bg-green-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
-                    <div>
-                        <p className="text-xs sm:text-sm text-green-100">Total Submissions</p>
-                        <p className="text-xl sm:text-2xl font-bold">{data.overview.totalSubmissions}</p>
+                <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-3 sm:p-4 lg:p-5">
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submissions</p>
+                            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-1 truncate">{data.overview.totalSubmissions}</p>
+                        </div>
+                        <div className="h-8 w-8 sm:h-11 sm:w-11 rounded-xl bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 ml-2">
+                            <Inbox className="h-4 w-4 sm:h-5 sm:w-5 text-gray-900" />
+                        </div>
+                    </div>
+                    <div className="mt-2 sm:mt-4 text-xs sm:text-sm text-gray-600">
+                        Avg per task
+                        <span className="ml-1 sm:ml-2 font-semibold text-gray-900">{data.overview.averageSubmissionsPerTask}</span>
                     </div>
                 </div>
 
-                <div className="bg-purple-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
-                    <div>
-                        <p className="text-xs sm:text-sm text-purple-100">Total Spent</p>
-                        <p className="text-xl sm:text-2xl font-bold">{lamportsToSol(data.overview.totalSpent)} SOL</p>
+                <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-3 sm:p-4 lg:p-5">
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Spent</p>
+                            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-1 truncate">{totalSpentSolStr} SOL</p>
+                            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                                {totalSpentUsd === null
+                                    ? '—'
+                                    : totalSpentUsd.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                            </p>
+                        </div>
+                        <div className="h-8 w-8 sm:h-11 sm:w-11 rounded-xl bg-[#fff7ed] border border-[#fed7aa] flex items-center justify-center flex-shrink-0 ml-2">
+                            <Coins className="h-4 w-4 sm:h-5 sm:w-5 text-gray-900" />
+                        </div>
+                    </div>
+                    <div className="mt-2 sm:mt-4 text-xs text-gray-500">
+                        USD uses live SOL price (cached)
                     </div>
                 </div>
 
-                <div className="bg-orange-500 rounded-lg shadow-sm p-4 sm:p-6 text-white">
-                    <div>
-                        <p className="text-xs sm:text-sm text-orange-100">Avg Submissions</p>
-                        <p className="text-xl sm:text-2xl font-bold">{data.overview.averageSubmissionsPerTask}</p>
+                <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-3 sm:p-4 lg:p-5">
+                    <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Completion</p>
+                            <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-1 truncate">{data.completionTrend?.[data.completionTrend.length - 1]?.completionRate ?? 0}%</p>
+                        </div>
+                        <div className="h-8 w-8 sm:h-11 sm:w-11 rounded-xl bg-white border border-gray-200 flex items-center justify-center flex-shrink-0 ml-2">
+                            <Gauge className="h-4 w-4 sm:h-5 sm:w-5 text-gray-900" />
+                        </div>
+                    </div>
+                    <div className="mt-2 sm:mt-4 h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                            className="h-2 rounded-full bg-[#f97316]"
+                            style={{ width: `${Math.min(100, Math.max(0, data.completionTrend?.[data.completionTrend.length - 1]?.completionRate ?? 0))}%` }}
+                        />
                     </div>
                 </div>
             </div>
 
-            {/* Single Chart with Selector */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-6 sm:mb-8">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 sm:mb-6 space-y-4 sm:space-y-0">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-800">Task Creation Analytics</h3>
-                    <div className="flex flex-wrap gap-2">
-                        <button
-                            onClick={() => setChartView('daily')}
-                            className={`px-3 py-1 rounded text-xs sm:text-sm font-medium ${
-                                chartView === 'daily'
-                                    ? 'bg-purple-500 text-white'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                        >
-                            Daily
-                        </button>
-                        <button
-                            onClick={() => setChartView('weekly')}
-                            className={`px-3 py-1 rounded text-xs sm:text-sm font-medium ${
-                                chartView === 'weekly'
-                                    ? 'bg-purple-500 text-white'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                        >
-                            Weekly
-                        </button>
-                        <button
-                            onClick={() => setChartView('monthly')}
-                            className={`px-3 py-1 rounded text-xs sm:text-sm font-medium ${
-                                chartView === 'monthly'
-                                    ? 'bg-purple-500 text-white'
-                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                            }`}
-                        >
-                            Monthly
-                        </button>
+            {/* Activity Trend */}
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-5 mb-4 sm:mb-6 lg:mb-8">
+                <div className="flex flex-col gap-2 sm:gap-3 mb-3 sm:mb-4">
+                    <div>
+                        <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Activity trend</h3>
+                        <p className="text-xs sm:text-sm text-gray-600">Tasks created vs submissions received.</p>
+                    </div>
+                    <div className="flex items-center gap-2 sm:gap-3 text-xs font-semibold">
+                        <div className="inline-flex items-center gap-1 sm:gap-2">
+                            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-sm" style={{ backgroundColor: '#f97316' }} />
+                            <span className="text-gray-700">Tasks</span>
+                        </div>
+                        <div className="inline-flex items-center gap-1 sm:gap-2">
+                            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-sm" style={{ backgroundColor: '#111827' }} />
+                            <span className="text-gray-700">Submissions</span>
+                        </div>
                     </div>
                 </div>
-                <HistogramChart data={getChartData()} color="#8B5CF6" height={250} />
+                <DualBarChart data={getCombinedActivityChartData()} aColor="#f97316" bColor="#111827" height={200} />
             </div>
 
             {/* Recent Activity */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4">Recent Activity</h3>
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 sm:mb-4">
+                    <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Recent activity</h3>
+                    <div className="text-xs text-gray-500">Last {Math.min(itemsPerPage, filteredRecentActivity.length)} shown</div>
+                </div>
                 <div className="space-y-2 sm:space-y-3">
-                    {data.recentActivity.length === 0 ? (
-                        <p className="text-gray-500 text-center py-4">No recent activity</p>
+                    {filteredRecentActivity.length === 0 ? (
+                        <p className="text-gray-500 text-center py-3 sm:py-4">No recent activity</p>
                     ) : (
                         <>
                             {paginatedActivity.map((activity) => (
-                                <div key={activity.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-gray-50 rounded-lg space-y-2 sm:space-y-0">
+                                <div key={activity.id} className="flex flex-col gap-2 sm:gap-0 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-200/60">
                                     <div className="flex-1">
-                                        <h4 className="font-medium text-gray-800 text-sm sm:text-base line-clamp-2">{activity.title}</h4>
-                                        <p className="text-xs sm:text-sm text-gray-600">ID: #{activity.id}</p>
-                                        {activity.expiresAt && (
-                                            <div className="mt-2">
-                                                <CountdownTimer expiresAt={activity.expiresAt} compact={true} />
-                                            </div>
-                                        )}
+                                        <h4 className="font-semibold text-gray-900 text-sm sm:text-base line-clamp-2 pr-16 sm:pr-0">{activity.title}</h4>
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600 mt-0.5">
+                                            <span>ID: #{activity.id}</span>
+                                            {activity.expiresAt && (
+                                                <div className="inline-flex w-fit">
+                                                    <CountdownTimer expiresAt={activity.expiresAt} compact={true} />
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex sm:flex-col items-end sm:items-end space-x-2 sm:space-x-0 sm:space-y-1">
-                                        <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                                    <div className="flex flex-row sm:flex-col items-end justify-between gap-2 sm:gap-1">
+                                        <span className={`inline-block px-2 py-1 text-xs rounded-full flex-shrink-0 ${
                                             activity.status === 'completed' 
                                                 ? 'bg-green-100 text-green-800' 
-                                                : 'bg-yellow-100 text-yellow-800'
+                                                : 'bg-[#fff7ed] text-gray-900 border border-[#fed7aa]'
                                         }`}>
                                             {activity.status}
                                         </span>
-                                        <p className="text-xs sm:text-sm text-gray-600">{activity.submissions} submissions</p>
+                                        <p className="text-xs sm:text-sm text-gray-600 text-right">{activity.submissions} submissions</p>
                                     </div>
                                 </div>
                             ))}
@@ -282,7 +450,7 @@ export const DashboardView = () => {
                                         className={`px-3 py-1 rounded text-xs sm:text-sm ${
                                             activityPage === 0
                                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                                : 'bg-purple-500 text-white hover:bg-purple-600'
+                                                : 'bg-gray-900 text-white hover:bg-gray-800'
                                         }`}
                                     >
                                         Previous
@@ -296,7 +464,7 @@ export const DashboardView = () => {
                                         className={`px-3 py-1 rounded text-xs sm:text-sm ${
                                             activityPage === totalPages - 1
                                                 ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                                : 'bg-purple-500 text-white hover:bg-purple-600'
+                                                : 'bg-gray-900 text-white hover:bg-gray-800'
                                         }`}
                                     >
                                         Next

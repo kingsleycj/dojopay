@@ -86,7 +86,7 @@ export default function CreatorTaskDetailPage({ params }: {
             <div className="min-h-screen flex flex-col">
                 <Appbar onUserTypeSelect={setUserType} />
                 <div className="flex-grow flex justify-center items-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f97316]"></div>
                 </div>
                 <Footer />
             </div>
@@ -94,7 +94,7 @@ export default function CreatorTaskDetailPage({ params }: {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="min-h-screen bg-gray-50">
             <Appbar onUserTypeSelect={setUserType} />
             <div className="flex flex-grow pt-16">
                 <CreatorSidebar activeView="tasks" onViewChange={() => {}} />
@@ -124,7 +124,7 @@ export default function CreatorTaskDetailPage({ params }: {
                                     <div className="flex gap-2 ml-4">
                                         <button
                                             onClick={() => router.push(`/creator/task/${params.taskId}/edit`)}
-                                            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors shadow-sm">
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                             </svg>
@@ -145,7 +145,7 @@ export default function CreatorTaskDetailPage({ params }: {
                                     {/* Analytics Section */}
                                     <div className="bg-gray-50 rounded-xl p-6">
                                         <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                                             </svg>
                                             Analytics
@@ -160,13 +160,13 @@ export default function CreatorTaskDetailPage({ params }: {
                                                     <div key={taskId} className='bg-white p-4 rounded-lg border border-gray-200'>
                                                         <div className='flex items-center justify-between mb-3'>
                                                             <span className='font-semibold text-gray-800'>Option {index + 1}</span>
-                                                            <span className='bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full'>
+                                                            <span className='bg-[#fff7ed] text-gray-900 text-sm font-medium px-3 py-1 rounded-full border border-[#fed7aa]'>
                                                                 {percentage}%
                                                             </span>
                                                         </div>
                                                         <div className='w-full bg-gray-200 rounded-full h-3 overflow-hidden'>
                                                             <div 
-                                                                className='bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out' 
+                                                                className='bg-[#f97316] h-3 rounded-full transition-all duration-500 ease-out' 
                                                                 style={{ width: `${percentage}%` }}
                                                             ></div>
                                                         </div>
@@ -182,7 +182,7 @@ export default function CreatorTaskDetailPage({ params }: {
                                     {/* Submissions Section */}
                                     <div className="bg-gray-50 rounded-xl p-6">
                                         <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <svg className="w-5 h-5 text-[#f97316]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                                             </svg>
                                             Submissions ({submissions.length})
@@ -220,7 +220,7 @@ export default function CreatorTaskDetailPage({ params }: {
                                                                                     </div>
                                                                                 </td>
                                                                                 <td className='p-4'>
-                                                                                    <span className='inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800'>
+                                                                                    <span className='inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-[#fff7ed] text-gray-900 border border-[#fed7aa]'>
                                                                                         Option {optionIndex > 0 ? optionIndex : sub.optionId}
                                                                                     </span>
                                                                                 </td>

@@ -4,7 +4,7 @@ import {
   WalletMultiButton,
 } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { BACKEND_URL } from "@/utils";
 import { UserTypeModal } from "./UserTypeModal";
@@ -17,6 +17,7 @@ export const Appbar = ({
 }) => {
   const { publicKey, signMessage } = useWallet();
   const [mounted, setMounted] = useState(false);
+  const prevConnectedRef = useRef(false);
   const [showUserTypeModal, setShowUserTypeModal] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -109,10 +110,23 @@ async function signAndSendWorker(): Promise<boolean> {
 
   useEffect(() => {
     if (mounted && !publicKey) {
+      const wasConnected = prevConnectedRef.current;
+      prevConnectedRef.current = false;
+
       // Clear tokens when wallet disconnects
       localStorage.removeItem("token");
       localStorage.removeItem("workerToken");
+
+      // Redirect only on an actual disconnect (connected -> disconnected)
+      if (wasConnected) {
+        window.location.href = "/";
+      }
     }
+  }, [publicKey, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    prevConnectedRef.current = !!publicKey;
   }, [publicKey, mounted]);
 
   if (!mounted) {
@@ -143,7 +157,7 @@ async function signAndSendWorker(): Promise<boolean> {
               </svg>
             </button>
           )}
-          <div className="text-xl sm:text-2xl pl-2 sm:pl-4 flex justify-center pt-3">
+          <div className="text-xl sm:text-2xl pl-2 sm:pl-4 flex justify-center pt-3 font-bold tracking-tight text-gray-900">
             DojoPay
           </div>
         </div>
