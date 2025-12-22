@@ -1,6 +1,7 @@
+import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { CountdownTimer } from '@/components/CountdownTimer';
+import { CountdownTimer } from '../../components/CountdownTimer';
 
 // Mock Date.now to control time
 const mockDateNow = vi.spyOn(Date, 'now');

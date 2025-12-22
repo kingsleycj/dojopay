@@ -97,7 +97,7 @@ export const TasksView = () => {
                                     </h3>
                                 </div>
                                 
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+                                <div className="flex items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
                                     <span className="text-base sm:text-lg lg:text-2xl font-bold text-gray-900">{lamportsToSol(task.amount)} SOL</span>
                                     <span className={`inline-block px-2 sm:px-3 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
                                         task.status === 'completed' 

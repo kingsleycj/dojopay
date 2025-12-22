@@ -1,3 +1,4 @@
+import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { WorkerView } from '../../components/WorkerView';
@@ -5,6 +6,7 @@ import { DashboardView } from '../../components/DashboardView';
 import { TasksView } from '../../components/TasksView';
 import { Upload } from '../../components/Upload';
 import axios from 'axios';
+import { BACKEND_URL } from '../../utils';
 
 // Mock axios
 vi.mock('axios');

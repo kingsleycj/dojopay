@@ -172,35 +172,21 @@ export const DashboardView = () => {
         switch (chartView) {
             case 'daily':
                 return data.dailyStats.slice(-7).map(stat => ({
-                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }),
+                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short' }),
+                    fullLabel: new Date(stat.date).toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
                     value: stat.tasksCreated
                 }));
             case 'weekly':
-                // Calculate month-aligned weeks from daily data
-                const currentMonth = new Date().getMonth();
-                const currentYear = new Date().getFullYear();
-                
-                // Filter daily stats to current month
-                const currentMonthDaily = data.dailyStats.filter(stat => {
-                    const date = new Date(stat.date);
-                    return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-                });
-                
-                // Group into weeks (Week 1: 1-7, Week 2: 8-14, Week 3: 15-21, Week 4: 22-28, Week 5: 29+)
                 const weeks = [];
-                for (let weekNum = 0; weekNum < 5; weekNum++) {
-                    const weekStart = weekNum * 7 + 1;
-                    const weekEnd = Math.min((weekNum + 1) * 7, new Date(currentYear, currentMonth + 1, 0).getDate());
-                    
-                    const weekTasks = currentMonthDaily
-                        .filter(stat => {
-                            const day = new Date(stat.date).getDate();
-                            return day >= weekStart && day <= weekEnd;
-                        })
+                for (let i = 0; i < Math.min(8, data.weeklyStats?.length || 0); i++) {
+                    const weekNum = i;
+                    const weekTasks = data.dailyStats
+                        .slice(i * 7, (i + 1) * 7)
                         .reduce((sum, stat) => sum + stat.tasksCreated, 0);
                     
                     weeks.push({
-                        label: `Week ${weekNum + 1}`,
+                        label: `W${weekNum + 1}`,
+                        fullLabel: `Week ${weekNum + 1}`,
                         value: weekTasks
                     });
                 }
@@ -208,7 +194,8 @@ export const DashboardView = () => {
                 return weeks;
             case 'monthly':
                 return data.monthlyStats.slice(-6).map(stat => ({
-                    label: stat.month,
+                    label: stat.month.slice(0, 3),
+                    fullLabel: stat.month,
                     value: stat.tasksCreated
                 }));
             default:
@@ -221,6 +208,7 @@ export const DashboardView = () => {
         const submissions = getSubmissionsChartData();
         return tasks.map((t, i) => ({
             label: t.label,
+            fullLabel: t.fullLabel,
             a: t.value,
             b: submissions[i]?.value ?? 0
         }));
@@ -230,17 +218,20 @@ export const DashboardView = () => {
         switch (chartView) {
             case 'daily':
                 return data.dailyStats.slice(-7).map(stat => ({
-                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }),
+                    label: new Date(stat.date).toLocaleDateString('en', { weekday: 'short' }),
+                    fullLabel: new Date(stat.date).toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
                     value: stat.submissionsReceived
                 }));
             case 'weekly':
                 return getChartData().map((w, i) => ({
                     label: w.label,
+                    fullLabel: w.fullLabel,
                     value: data.weeklyStats?.[i]?.submissionsReceived ?? 0
                 }));
             case 'monthly':
                 return data.monthlyStats.slice(-6).map(stat => ({
-                    label: stat.month,
+                    label: stat.month.slice(0, 3),
+                    fullLabel: stat.month,
                     value: 0
                 }));
             default:
@@ -310,7 +301,7 @@ export const DashboardView = () => {
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 lg:mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 lg:mb-8">
                 <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-200 shadow-sm p-3 sm:p-4 lg:p-5">
                     <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
@@ -349,7 +340,7 @@ export const DashboardView = () => {
                         <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Spent</p>
                             <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 mt-1 truncate">{totalSpentSolStr} SOL</p>
-                            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                            <p className="text-xs sm:text-sm text-green-600 mt-1">
                                 {totalSpentUsd === null
                                     ? '—'
                                     : totalSpentUsd.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
@@ -384,13 +375,13 @@ export const DashboardView = () => {
             </div>
 
             {/* Activity Trend */}
-            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-5 mb-4 sm:mb-6 lg:mb-8">
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 p-3 sm:p-4 lg:p-5 mb-4 sm:mb-6 lg:mb-8">
                 <div className="flex flex-col gap-2 sm:gap-3 mb-3 sm:mb-4">
                     <div>
                         <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-gray-900">Activity trend</h3>
                         <p className="text-xs sm:text-sm text-gray-600">Tasks created vs submissions received.</p>
                     </div>
-                    <div className="flex items-center gap-2 sm:gap-3 text-xs font-semibold">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap items-center gap-2 sm:gap-3 text-xs font-semibold">
                         <div className="inline-flex items-center gap-1 sm:gap-2">
                             <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-sm" style={{ backgroundColor: '#f97316' }} />
                             <span className="text-gray-700">Tasks</span>
@@ -401,7 +392,9 @@ export const DashboardView = () => {
                         </div>
                     </div>
                 </div>
-                <DualBarChart data={getCombinedActivityChartData()} aColor="#f97316" bColor="#111827" height={200} />
+                <div className="w-full h-32 sm:h-40 md:h-48 lg:h-50">
+                    <DualBarChart data={getCombinedActivityChartData()} aColor="#f97316" bColor="#111827" height={150} />
+                </div>
             </div>
 
             {/* Recent Activity */}
