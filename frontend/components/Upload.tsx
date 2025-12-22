@@ -143,7 +143,7 @@ export const Upload = () => {
             <input 
                 onChange={(e) => setTitle(e.target.value)} 
                 type="text" 
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all text-sm sm:text-base" 
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all text-sm sm:text-base" 
                 placeholder="Enter a clear, descriptive title for your task..." 
                 required 
             />
@@ -155,7 +155,7 @@ export const Upload = () => {
             <input 
                 onChange={(e) => setExpirationDate(e.target.value)} 
                 type="datetime-local" 
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 transition-all text-sm sm:text-base" 
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 transition-all text-sm sm:text-base" 
                 min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} // Minimum 1 hour from now
             />
             <p className="text-xs sm:text-sm text-gray-500 mt-2">Set when this task will expire. Workers won't see expired tasks.</p>
@@ -193,7 +193,7 @@ export const Upload = () => {
                 className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
                     isSubmitting || !title.trim() || images.length === 0
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-purple-600 text-white hover:bg-purple-700 shadow-md hover:shadow-lg'
+                        : 'bg-gray-900 text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
                 }`}
             > 
                 {isSubmitting ? (
@@ -212,10 +212,10 @@ export const Upload = () => {
         {/* Payment Confirmation Modal */}
         {showPaymentModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full mx-4">
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl p-4 sm:p-6 max-w-md w-full mx-4">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Confirm Payment</h3>
                     <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
-                        Creating a task requires a payment of <span className="font-semibold text-purple-600">0.1 SOL</span>. 
+                        Creating a task requires a payment of <span className="font-semibold text-gray-900">0.1 SOL</span>. 
                         This payment covers the task creation and worker rewards.
                     </p>
                     <div className="flex gap-2 sm:gap-3">
@@ -231,7 +231,7 @@ export const Upload = () => {
                             className={`flex-1 px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors text-sm sm:text-base ${
                                 isSubmitting
                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    : 'bg-green-600 text-white hover:bg-green-700'
+                                    : 'bg-gray-900 text-white hover:bg-gray-800'
                             }`}
                         >
                             {isSubmitting ? 'Processing...' : 'Pay 0.1 SOL'}

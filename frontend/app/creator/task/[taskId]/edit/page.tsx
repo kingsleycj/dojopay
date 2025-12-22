@@ -161,7 +161,7 @@ export default function EditTaskPage() {
                 <ToastContainer />
                 <Appbar onUserTypeSelect={setUserType} />
                 <div className="flex-grow pt-16 flex justify-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500"></div>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f97316]"></div>
                 </div>
                 <Footer />
             </div>
@@ -218,7 +218,7 @@ export default function EditTaskPage() {
                                 type="text"
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
-                                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all text-sm sm:text-base"
+                                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all text-sm sm:text-base"
                                 placeholder="Enter a clear, descriptive title for your task..."
                                 required
                             />
@@ -230,7 +230,7 @@ export default function EditTaskPage() {
                                 type="datetime-local"
                                 value={expirationDate}
                                 onChange={(e) => setExpirationDate(e.target.value)}
-                                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 transition-all text-sm sm:text-base"
+                                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 transition-all text-sm sm:text-base"
                                 min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)}
                             />
                             <p className="text-xs sm:text-sm text-gray-500 mt-2">Set when this task will expire. Workers won't see expired tasks.</p>
@@ -257,7 +257,7 @@ export default function EditTaskPage() {
                                 className={`flex-1 px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
                                     isSubmitting
                                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                        : 'bg-purple-600 text-white hover:bg-purple-700 shadow-md hover:shadow-lg'
+                                        : 'bg-gray-900 text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
                                 }`}
                             >
                                 {isSubmitting ? (

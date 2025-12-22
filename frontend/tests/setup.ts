@@ -1,5 +1,9 @@
+import { vi, beforeAll, afterAll, expect } from 'vitest';
 import '@testing-library/jest-dom';
-import { vi, beforeAll, afterAll } from 'vitest';
+import React from 'react';
+
+// Add React to global scope for tests
+global.React = React;
 
 // Mock Next.js router
 vi.mock('next/navigation', () => ({

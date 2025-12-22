@@ -5,6 +5,11 @@ import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import {
     WalletModalProvider
 } from '@solana/wallet-adapter-react-ui';
+import {
+    PhantomWalletAdapter,
+    SolflareWalletAdapter,
+    LedgerWalletAdapter,
+} from '@solana/wallet-adapter-wallets';
 import { clusterApiUrl } from '@solana/web3.js';
 import "./globals.css";
 
@@ -22,7 +27,11 @@ export default function RootLayout({
   const endpoint = useMemo(() => clusterApiUrl(network), [network]);
 
   const wallets = useMemo(
-      () => [],
+      () => [
+        new PhantomWalletAdapter(),
+        new SolflareWalletAdapter({ network }),
+        new LedgerWalletAdapter(),
+      ],
       [network]
   );
 
@@ -31,7 +40,7 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
-      <body>
+      <body className="bg-gray-50">
         <ConnectionProvider endpoint={endpoint}>
             <WalletProvider wallets={wallets} autoConnect>
                 <WalletModalProvider>

@@ -4,7 +4,7 @@ import {
   WalletMultiButton,
 } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { BACKEND_URL } from "@/utils";
 import { UserTypeModal } from "./UserTypeModal";
@@ -17,6 +17,7 @@ export const Appbar = ({
 }) => {
   const { publicKey, signMessage } = useWallet();
   const [mounted, setMounted] = useState(false);
+  const prevConnectedRef = useRef(false);
   const [showUserTypeModal, setShowUserTypeModal] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -109,19 +110,34 @@ async function signAndSendWorker(): Promise<boolean> {
 
   useEffect(() => {
     if (mounted && !publicKey) {
+      const wasConnected = prevConnectedRef.current;
+      prevConnectedRef.current = false;
+
       // Clear tokens when wallet disconnects
       localStorage.removeItem("token");
       localStorage.removeItem("workerToken");
+
+      // Redirect only on an actual disconnect (connected -> disconnected)
+      if (wasConnected) {
+        window.location.href = "/";
+      }
     }
+  }, [publicKey, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    prevConnectedRef.current = !!publicKey;
   }, [publicKey, mounted]);
 
   if (!mounted) {
     return (
-      <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
-        <div className="text-xl sm:text-2xl pl-2 sm:pl-4 flex justify-center pt-3">
-          DojoPay
+      <div className="flex justify-between items-center border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50 w-screen">
+        <div className="flex items-center flex-1 min-w-0">
+          <div className="text-base sm:text-lg lg:text-xl xl:text-2xl pl-2 sm:pl-4 flex-1 font-bold tracking-tight text-gray-900 truncate">
+            DojoPay
+          </div>
         </div>
-        <div className="text-xl pr-2 sm:pr-4 pb-2">
+        <div className="flex items-center pr-2 sm:pr-4">
           <div className="w-16 sm:w-20 h-10 bg-gray-200 rounded animate-pulse"></div>
         </div>
       </div>
@@ -130,24 +146,24 @@ async function signAndSendWorker(): Promise<boolean> {
 
   return (
     <>
-      <div className="flex justify-between border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50">
-        <div className="flex items-center">
+      <div className="flex justify-between items-center border-b pb-2 pt-2 fixed top-0 left-0 right-0 bg-white z-50 w-screen">
+        <div className="flex items-center flex-1 min-w-0">
           {/* Hamburger menu for mobile */}
           {userType && (
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 mr-2"
+              className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 flex-shrink-0"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
           )}
-          <div className="text-xl sm:text-2xl pl-2 sm:pl-4 flex justify-center pt-3">
+          <div className="text-base sm:text-lg lg:text-xl xl:text-2xl pl-2 sm:pl-4 flex-1 font-bold tracking-tight text-gray-900 truncate">
             DojoPay
           </div>
         </div>
-        <div className="text-xl pr-2 sm:pr-4 pb-2">
+        <div className="flex items-center pr-2 sm:pr-4">
           {publicKey ? <WalletDisconnectButton /> : <WalletMultiButton />}
         </div>
       {/* <UserTypeModal 

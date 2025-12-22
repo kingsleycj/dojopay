@@ -72,10 +72,10 @@ export default function Page({ params: {
                         return <div key={taskId} className='bg-white border p-4 rounded-lg shadow-sm'>
                             <div className='flex items-center justify-between mb-2'>
                                 <span className='font-bold text-gray-700'>Option {index + 1}</span>
-                                <span className='bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded'>{percentage}%</span>
+                                <span className='bg-[#fff7ed] text-gray-900 text-xs font-medium px-2.5 py-0.5 rounded border border-[#fed7aa]'>{percentage}%</span>
                             </div>
                             <div className='w-full bg-gray-200 rounded-full h-2.5'>
-                                <div className='bg-blue-600 h-2.5 rounded-full' style={{ width: `${percentage}%` }}></div>
+                                <div className='bg-[#f97316] h-2.5 rounded-full' style={{ width: `${percentage}%` }}></div>
                             </div>
                             <div className='mt-2 text-sm text-gray-600 font-medium'>
                                 {votes} Votes

@@ -99,6 +99,7 @@ router.get("/nextTask", workerAuthMiddleware, async (req, res) => {
         id: task.id,
         title: task.title,
         amount: task.amount.toString(),
+        expiresAt: task.expiresAt,
         options: task.options.map(opt => ({
           id: opt.id,
           imageUrl: opt.image_url

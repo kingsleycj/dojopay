@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lamportsToSol, solToLamports } from '@/utils/convert';
+import { lamportsToSol, solToLamports } from '../../utils/convert';
 
 describe('Solana Conversions - Frontend Unit Tests', () => {
   describe('lamportsToSol', () => {
