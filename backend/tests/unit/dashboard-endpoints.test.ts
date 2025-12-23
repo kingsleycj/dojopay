@@ -18,6 +18,9 @@ vi.mock('../../src/lib/prisma.js', () => ({
     submission: {
       findMany: vi.fn(),
     },
+    payouts: {
+      findMany: vi.fn(),
+    },
     $disconnect: vi.fn(),
     $transaction: vi.fn(),
   },
@@ -104,6 +107,7 @@ describe('Dashboard and Analytics Endpoints', () => {
       ];
       
       mockPrisma.task.findMany.mockResolvedValue(mockTasks);
+      mockPrisma.payouts.findMany.mockResolvedValue([]);
 
       const response = await request(app)
         .get('/v1/user/dashboard')
@@ -189,6 +193,7 @@ describe('Dashboard and Analytics Endpoints', () => {
       ];
       
       mockPrisma.task.findMany.mockResolvedValue(mockTasks);
+      mockPrisma.payouts.findMany.mockResolvedValue([]);
 
       const response = await request(app)
         .get('/v1/user/dashboard')

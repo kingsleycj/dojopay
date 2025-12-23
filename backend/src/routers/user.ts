@@ -33,9 +33,25 @@ router.post("/signin", async(req, res) => {
     const { publicKey, signature } = req.body;
     const message = new TextEncoder().encode("Sign into DojoPay as a creator");
 
+    // Handle different signature formats
+    let signatureBytes;
+    if (signature.data) {
+        // Old format with data property
+        signatureBytes = new Uint8Array(signature.data);
+    } else if (Array.isArray(signature)) {
+        // Array format
+        signatureBytes = new Uint8Array(signature);
+    } else if (typeof signature === 'string') {
+        // Base64 string format
+        signatureBytes = Uint8Array.from(atob(signature), c => c.charCodeAt(0));
+    } else {
+        // Direct Uint8Array or Buffer
+        signatureBytes = new Uint8Array(signature);
+    }
+
     const result = nacl.sign.detached.verify(
         message,
-        new Uint8Array(signature.data),
+        signatureBytes,
         new PublicKey(publicKey).toBytes(),
     );
 
@@ -288,19 +304,24 @@ router.get("/tasks", authMiddleware, async (req, res) => {
       },
     });
 
-    const formattedTasks = tasks.map(task => ({
-      id: task.id,
-      title: task.title,
-      amount: task.amount.toString(),
-      status: task.done ? 'completed' : 'pending',
-      totalSubmissions: task._count.submissions,
-      createdAt: new Date().toISOString(), // Add current timestamp since no createdAt field in schema
-      expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
-      options: task.options.map(option => ({
-        id: option.id,
-        imageUrl: option.image_url,
-      })),
-    }));
+    const formattedTasks = tasks.map(task => {
+      const now = new Date();
+      const isExpired = task.expiresAt && new Date(task.expiresAt) < now;
+      
+      return {
+        id: task.id,
+        title: task.title,
+        amount: task.amount.toString(),
+        status: task.done ? 'completed' : (isExpired ? 'expired' : 'ongoing'),
+        totalSubmissions: task._count.submissions,
+        createdAt: new Date().toISOString(), // Add current timestamp since no createdAt field in schema
+        expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
+        options: task.options.map(option => ({
+          id: option.id,
+          imageUrl: option.image_url,
+        })),
+      };
+    });
 
     res.json({ tasks: formattedTasks });
   } catch (error) {
@@ -333,12 +354,33 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
       },
     });
 
+    // Get all payouts for this creator's workers
+    const payouts = await prismaClient.payouts.findMany({
+      where: {
+        worker_id: {
+          in: tasks.flatMap(task => task.submissions.map(s => s.worker_id))
+        }
+      },
+    });
+
+    console.log("All payouts found:", payouts.length);
+    console.log("Payouts by status:", payouts.reduce((acc, p) => {
+      acc[p.status] = (acc[p.status] || 0) + 1;
+      return acc;
+    }, {}));
+
     // Calculate basic stats
     const totalTasks = tasks.length;
     const totalSubmissions = tasks.reduce((sum, task) => sum + task._count.submissions, 0);
     const totalSpent = tasks.reduce((sum, task) => sum + Number(task.amount), 0);
     const completedTasks = tasks.filter(task => task.done === true).length;
     const pendingTasks = tasks.filter(task => task.done === false).length;
+    
+    // Calculate total payouts to workers (all payouts for now, we can filter by status later)
+    const totalPayouts = payouts.reduce((sum, payout) => sum + Number(payout.amount), 0);
+    
+    console.log("All payouts amount:", totalPayouts);
+    console.log("Worker IDs from submissions:", tasks.flatMap(task => task.submissions.map(s => s.worker_id)));
 
     // Use actual createdAt dates for daily stats
     const dailyStats = [];
@@ -396,15 +438,20 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
     // Recent activity (last 10 tasks)
     const recentActivity = tasks
       .slice(0, 10)
-      .map(task => ({
-        id: task.id,
-        title: task.title,
-        status: task.done ? 'completed' : (task._count.submissions > 0 ? 'completed' : 'pending'),
-        createdAt: new Date().toISOString(), // Placeholder since no createdAt field
-        expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
-        amount: task.amount.toString(),
-        submissions: task._count.submissions,
-      }));
+      .map(task => {
+        const now = new Date();
+        const isExpired = task.expiresAt && new Date(task.expiresAt) < now;
+        
+        return {
+          id: task.id,
+          title: task.title,
+          status: task.done ? 'completed' : (isExpired ? 'expired' : 'ongoing'),
+          createdAt: new Date().toISOString(), // Placeholder since no createdAt field
+          expiresAt: task.expiresAt ? task.expiresAt.toISOString() : null,
+          amount: task.amount.toString(),
+          submissions: task._count.submissions,
+        };
+      });
 
     // Task completion rate over time - simplified without timestamps
     const completionTrend = monthlyStats.map(stat => ({
@@ -417,6 +464,7 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
         totalTasks,
         totalSubmissions,
         totalSpent: totalSpent.toString(),
+        totalPayouts: totalPayouts.toString(),
         completedTasks,
         pendingTasks,
         averageSubmissionsPerTask: totalTasks > 0 ? (totalSubmissions / totalTasks).toFixed(2) : '0',
@@ -430,6 +478,139 @@ router.get("/dashboard", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("Error fetching dashboard analytics:", error);
     res.status(500).json({ error: "Failed to fetch dashboard analytics" });
+  }
+});
+
+// get creator earnings
+router.get("/earnings", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const now = new Date();
+    
+    console.log("Fetching earnings for userId:", userId);
+    
+    // Get all tasks for this creator with submissions
+    const tasks = await prismaClient.task.findMany({
+      where: {
+        user_id: userId,
+      },
+      include: {
+        submissions: {
+          include: {
+            worker: true,
+          },
+        },
+        options: true,
+        _count: {
+          select: {
+            submissions: true,
+          },
+        },
+      },
+      orderBy: {
+        id: 'desc',
+      },
+    });
+
+    // Get all payouts for this creator's workers
+    const payouts = await prismaClient.payouts.findMany({
+      where: {
+        worker_id: {
+          in: tasks.flatMap(task => task.submissions.map(s => s.worker_id))
+        }
+      },
+      orderBy: {
+        id: 'desc',
+      },
+    });
+
+    console.log("Found tasks:", tasks.length);
+    console.log("Tasks with submissions:", tasks.filter(t => t.submissions.length > 0).length);
+    console.log("Found payouts:", payouts.length);
+
+    // Calculate basic stats
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter(task => task.done === true).length;
+    const pendingTasks = tasks.filter(task => task.done === false).length;
+    const totalSpent = tasks.reduce((sum, task) => sum + Number(task.amount), 0);
+    const averageTaskCost = totalTasks > 0 ? totalSpent / totalTasks : 0;
+
+    // Create earnings records from individual submissions with payout data
+    const earnings: any[] = [];
+    const uniqueWorkers = new Set();
+    
+    tasks.forEach(task => {
+      task.submissions.forEach(submission => {
+        if (submission.worker) {
+          uniqueWorkers.add(submission.worker_id);
+          
+          // Find corresponding payout for this submission
+          const payout = payouts.find(p => p.worker_id === submission.worker_id);
+          
+          earnings.push({
+            id: submission.id, // Use submission ID for unique records
+            amount: submission.amount.toString(), // Use submission amount (worker's earnings)
+            date: task.createdAt.toISOString(),
+            status: task.done ? (payout?.status === 'Success' ? 'paid' : 'completed') : 'ongoing',
+            transactionHash: payout?.signature, // Use payout signature as transaction hash
+            taskId: task.id,
+            taskTitle: task.title,
+            workerAddress: submission.worker.address,
+            submissionId: submission.id,
+            payoutStatus: payout?.status,
+          });
+        }
+      });
+    });
+
+    // Calculate metrics
+    const monthlySpent = tasks
+      .filter(task => {
+        const taskMonth = new Date(task.createdAt || now).getMonth();
+        const currentMonth = now.getMonth();
+        return taskMonth === currentMonth;
+      })
+      .reduce((sum, task) => sum + Number(task.amount), 0);
+
+    const weeklySpent = tasks
+      .filter(task => {
+        const taskDate = new Date(task.createdAt || now);
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return taskDate >= weekAgo;
+      })
+      .reduce((sum, task) => sum + Number(task.amount), 0);
+
+    const dailySpent = tasks
+      .filter(task => {
+        const taskDate = new Date(task.createdAt || now);
+        const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        return taskDate >= dayAgo;
+      })
+      .reduce((sum, task) => sum + Number(task.amount), 0);
+
+    const retentionRate = uniqueWorkers.size > 0 ? "85%" : "0%"; // Placeholder calculation
+
+    console.log("Earnings records created:", earnings.length);
+    console.log("Total spent:", totalSpent);
+
+    res.json({
+      totalSpent: totalSpent.toString(),
+      totalTasks,
+      completedTasks,
+      pendingTasks,
+      averageTaskCost: averageTaskCost.toString(),
+      earnings,
+      metrics: {
+        monthlySpent: monthlySpent.toString(),
+        weeklySpent: weeklySpent.toString(),
+        dailySpent: dailySpent.toString(),
+        totalWorkers: uniqueWorkers.size,
+        retentionRate,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching creator earnings:", error);
+    res.status(500).json({ error: "Failed to fetch earnings data" });
   }
 });
 

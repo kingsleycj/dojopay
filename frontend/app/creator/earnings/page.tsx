@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { CreatorTasksContent } from '@/components/creator/CreatorTasksContent';
-import { CreatorSidebar } from '@/components/CreatorSidebar';
-import { Appbar } from '@/components/Appbar';
-import { ApplicationFooter } from '@/components/ApplicationFooter';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useRouter } from 'next/navigation';
+import { CreatorEarningsContent } from '@/components/creator/CreatorEarningsContent';
+import { CreatorSidebar } from '@/components/CreatorSidebar';
+import { Appbar } from '@/components/Appbar';
+import { ApplicationFooter } from '@/components/ApplicationFooter';
 
-export default function TasksPage() {
+export default function EarningsPage() {
     const { publicKey } = useWallet();
     const router = useRouter();
     const [userType, setUserType] = useState<'worker' | 'creator' | null>(null);
@@ -24,7 +24,6 @@ export default function TasksPage() {
                 } else if (workerToken) {
                     setUserType('worker');
                 } else {
-                    // Redirect to landing page if no tokens found
                     console.log("No tokens found, redirecting to landing page");
                     window.location.href = "/";
                 }
@@ -58,9 +57,9 @@ export default function TasksPage() {
             <Appbar onUserTypeSelect={setUserType} />
             <div className="flex-grow pt-16">
                 <div className="flex flex-col lg:flex-row">
-                    <CreatorSidebar activeView="tasks" onViewChange={() => {}} />
+                    <CreatorSidebar activeView="earnings" onViewChange={() => {}} />
                     <div className="flex-grow lg:ml-64">
-                        <CreatorTasksContent />
+                        <CreatorEarningsContent />
                     </div>
                 </div>
             </div>
