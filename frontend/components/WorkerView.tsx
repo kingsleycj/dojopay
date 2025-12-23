@@ -1,7 +1,9 @@
 "use client";
-import { BACKEND_URL, CLOUDFRONT_URL } from "@/utils";
+import { BACKEND_URL } from "@/utils";
 import axios from "axios";
 import { useEffect, useState } from "react";
+import { showToast } from "./Toast";
+import { CountdownTimer } from "./CountdownTimer";
 
 interface Task {
     id: number;
@@ -9,9 +11,12 @@ interface Task {
     title: string;
     options: {
         id: number;
-        image_url: string;
+        image_url?: string;
+        imageUrl?: string;
         task_id: number;
     }[];
+    expiresAt?: string;
+    createdAt: string;
 }
 
 export const WorkerView = () => {
@@ -28,19 +33,44 @@ export const WorkerView = () => {
                 }
             });
             console.log("Worker nextTask response:", response.data);
-            setCurrentTask(response.data.task);
-        } catch (error) {
-            setCurrentTask(null);
+            setCurrentTask(response.data);
+        } catch (error: any) {
+            // If authentication fails, clear token and redirect to landing page
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                console.log("Authentication failed, clearing token and redirecting");
+                localStorage.removeItem("workerToken");
+                window.location.href = "/";
+            } else {
+                setCurrentTask(null);
+            }
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        if (localStorage.getItem("workerToken")) {
+        const workerToken = localStorage.getItem("workerToken");
+        console.log("WorkerView useEffect - workerToken:", workerToken);
+        if (workerToken) {
             fetchTasks();
+        } else {
+            // Redirect to landing page if no token found
+            console.log("No worker token found, redirecting to landing page");
+            window.location.href = "/";
         }
     }, []);
+
+    useEffect(() => {
+        if (!currentTask?.expiresAt) return;
+
+        const expiresAtMs = new Date(currentTask.expiresAt).getTime();
+        if (Number.isNaN(expiresAtMs)) return;
+
+        if (expiresAtMs <= Date.now()) {
+            showToast("This task expired. Loading a new one...", "info");
+            void fetchTasks();
+        }
+    }, [currentTask?.expiresAt]);
     
     if (loading) {
         return (
@@ -76,9 +106,14 @@ export const WorkerView = () => {
                             <h2 className="text-xl sm:text-2xl font-bold text-black text-center mb-2">
                                 {currentTask.title}
                             </h2>
-                            <p className="text-sm sm:text-base text-center text-gray-600">
+                            <p className="text-sm sm:text-base text-center text-gray-600 mb-3">
                                 Select your preferred option
                             </p>
+                            {currentTask.expiresAt && (
+                                <div className="flex justify-center mb-2">
+                                    <CountdownTimer expiresAt={currentTask.expiresAt} onExpire={() => fetchTasks()} />
+                                </div>
+                            )}
                         </div>
                     )}
                     
@@ -90,26 +125,40 @@ export const WorkerView = () => {
                                     
                                     setSubmitting(true);
                                     try {
-                                        await axios.post(`${BACKEND_URL}/v1/worker/submit`, {
-                                            taskId: currentTask.id,
-                                            optionId: option.id
+                                        await axios.post(`${BACKEND_URL}/v1/worker/submission`, {
+                                            taskId: currentTask.id.toString(),
+                                            selection: option.id.toString()
                                         }, {
                                             headers: {
                                                 "Authorization": `Bearer ${localStorage.getItem("workerToken")}`
                                             }
                                         });
-                                        alert("Submission successful!");
+                                        showToast("Submission successful!", "success");
                                         await fetchTasks();
-                                    } catch(e) {
+                                    } catch(e: any) {
                                         console.error("Submission failed:", e);
-                                        alert("Submission failed. Please try again.");
-                                        setCurrentTask(null);
+                                        // If authentication fails, clear token and redirect to landing page
+                                        if (e.response?.status === 401 || e.response?.status === 403) {
+                                            console.log("Submission authentication failed, clearing token and redirecting");
+                                            localStorage.removeItem("workerToken");
+                                            window.location.href = "/";
+                                        } else if (
+                                            e.response?.status === 400 &&
+                                            typeof e.response?.data?.message === 'string' &&
+                                            e.response.data.message.toLowerCase().includes('task is no longer available')
+                                        ) {
+                                            showToast("That task was just taken. Loading a new one...", "info");
+                                            await fetchTasks();
+                                        } else {
+                                            showToast("Submission failed. Please try again.", "error");
+                                            setCurrentTask(null);
+                                        }
                                     } finally {
                                         setSubmitting(false);
                                     }
                                 }}
                                 key={option.id} 
-                                imageUrl={option.image_url} 
+                                imageUrl={option.image_url ?? option.imageUrl ?? ""} 
                             />
                         ))}
                     </div>
@@ -117,7 +166,7 @@ export const WorkerView = () => {
                     {submitting && (
                         <div className="flex justify-center">
                             <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
-                                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-purple-500 border-r-2 border-green-400"></div>
+                                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-[#f97316] border-r-2 border-gray-900"></div>
                                 <span className="text-xs sm:text-sm sm:text-base text-gray-700 font-medium">Submitting your choice...</span>
                             </div>
                         </div>
@@ -141,7 +190,7 @@ function Option({imageUrl, onSelect}: {
         }
     };
 
-    if (hasError) {
+    if (!imageUrl || hasError) {
         return <div className="p-2 sm:p-4 border rounded-lg m-1 sm:m-2 bg-white shadow-sm">
             <div className="p-2 sm:p-4 w-full max-w-xs sm:max-w-sm rounded-md border-2 border-gray-300 flex items-center justify-center bg-gray-100">
                 <div className="text-center text-gray-500">

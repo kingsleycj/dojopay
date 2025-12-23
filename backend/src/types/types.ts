@@ -6,6 +6,7 @@ export const createTaskInput = z.object({
     })),
     title: z.string().optional(),
     signature: z.string(),
+    expirationDate: z.string().optional(), // ISO date string for expiration
 })
 
 export const createSubmissionInput = z.object({

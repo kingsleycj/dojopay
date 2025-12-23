@@ -1,14 +1,16 @@
 'use client';
 
-import { TasksView } from '@/components/TasksView';
+import { CreatorTasksContent } from '@/components/creator/CreatorTasksContent';
 import { CreatorSidebar } from '@/components/CreatorSidebar';
 import { Appbar } from '@/components/Appbar';
-import { Footer } from '@/components/Footer';
+import { ApplicationFooter } from '@/components/ApplicationFooter';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useRouter } from 'next/navigation';
 
 export default function TasksPage() {
     const { publicKey } = useWallet();
+    const router = useRouter();
     const [userType, setUserType] = useState<'worker' | 'creator' | null>(null);
 
     useEffect(() => {
@@ -22,7 +24,9 @@ export default function TasksPage() {
                 } else if (workerToken) {
                     setUserType('worker');
                 } else {
-                    setUserType(null);
+                    // Redirect to landing page if no tokens found
+                    console.log("No tokens found, redirecting to landing page");
+                    window.location.href = "/";
                 }
             } else {
                 setUserType(null);
@@ -32,7 +36,7 @@ export default function TasksPage() {
         checkWalletConnection();
         const interval = setInterval(checkWalletConnection, 1000);
         return () => clearInterval(interval);
-    }, [publicKey]);
+    }, [publicKey, router]);
 
     if (userType !== 'creator') {
         return (
@@ -44,7 +48,7 @@ export default function TasksPage() {
                         <p className="text-gray-600">Please sign in as a creator to access this page.</p>
                     </div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -56,11 +60,11 @@ export default function TasksPage() {
                 <div className="flex flex-col lg:flex-row">
                     <CreatorSidebar activeView="tasks" onViewChange={() => {}} />
                     <div className="flex-grow lg:ml-64">
-                        <TasksView />
+                        <CreatorTasksContent />
                     </div>
                 </div>
             </div>
-            <Footer />
+            <ApplicationFooter />
         </div>
     );
 }

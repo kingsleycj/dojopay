@@ -14,6 +14,7 @@ export const Upload = () => {
     const [txSignature, setTxSignature] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [expirationDate, setExpirationDate] = useState("");
     const router = useRouter();
     const { publicKey, sendTransaction } = useWallet();
     const { connection } = useConnection();
@@ -48,7 +49,8 @@ export const Upload = () => {
                     imageUrl: image,
                 })),
                 title,
-                signature: txSignature
+                signature: txSignature,
+                expirationDate: expirationDate || null
             };
             
             console.log("Submitting task with data:", requestData);
@@ -63,7 +65,7 @@ export const Upload = () => {
             console.log("Task submission response:", response.data);
             showToast("Task submitted successfully!", "success");
             router.push(`/creator/task/${response.data.id}`)
-        } catch (error) {
+        } catch (error: any) {
             console.error("Failed to submit task:", error);
             if (axios.isAxiosError(error)) {
                 console.error("Axios error details:", {
@@ -76,6 +78,15 @@ export const Upload = () => {
                         headers: error.config?.headers
                     }
                 });
+                
+                // If authentication fails, clear token and redirect to landing page
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.log('Upload authentication failed, clearing token and redirecting');
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('workerToken');
+                    window.location.href = '/';
+                    return;
+                }
             }
             showToast("Failed to submit task. Please try again.", "error");
         } finally {
@@ -113,6 +124,10 @@ export const Upload = () => {
 
             setTxSignature(signature);
             showToast("Payment successful! Now you can submit the task.", "success");
+            setShowPaymentModal(false);
+            
+            // Wait a bit to ensure transaction is fully propagated
+            await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
             console.error("Payment failed:", error);
             showToast("Payment failed. Please try again.", "error");
@@ -128,10 +143,22 @@ export const Upload = () => {
             <input 
                 onChange={(e) => setTitle(e.target.value)} 
                 type="text" 
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all text-sm sm:text-base" 
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 placeholder-gray-500 transition-all text-sm sm:text-base" 
                 placeholder="Enter a clear, descriptive title for your task..." 
                 required 
             />
+        </div>
+
+        {/* Expiration Date Section */}
+        <div className="mb-6 sm:mb-8">
+            <label className="block text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3">Expiration Date (Optional)</label>
+            <input 
+                onChange={(e) => setExpirationDate(e.target.value)} 
+                type="datetime-local" 
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900 transition-all text-sm sm:text-base" 
+                min={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} // Minimum 1 hour from now
+            />
+            <p className="text-xs sm:text-sm text-gray-500 mt-2">Set when this task will expire. Workers won't see expired tasks.</p>
         </div>
 
         {/* Images Section */}
@@ -166,7 +193,7 @@ export const Upload = () => {
                 className={`px-6 sm:px-8 py-2 sm:py-3 rounded-lg font-semibold transition-all text-sm sm:text-base ${
                     isSubmitting || !title.trim() || images.length === 0
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-purple-600 text-white hover:bg-purple-700 shadow-md hover:shadow-lg'
+                        : 'bg-gray-900 text-white hover:bg-gray-800 shadow-md hover:shadow-lg'
                 }`}
             > 
                 {isSubmitting ? (
@@ -185,10 +212,10 @@ export const Upload = () => {
         {/* Payment Confirmation Modal */}
         {showPaymentModal && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full mx-4">
+                <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl p-4 sm:p-6 max-w-md w-full mx-4">
                     <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Confirm Payment</h3>
                     <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6">
-                        Creating a task requires a payment of <span className="font-semibold text-purple-600">0.1 SOL</span>. 
+                        Creating a task requires a payment of <span className="font-semibold text-gray-900">0.1 SOL</span>. 
                         This payment covers the task creation and worker rewards.
                     </p>
                     <div className="flex gap-2 sm:gap-3">
@@ -204,7 +231,7 @@ export const Upload = () => {
                             className={`flex-1 px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors text-sm sm:text-base ${
                                 isSubmitting
                                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                                    : 'bg-gray-900 text-white hover:bg-gray-800'
                             }`}
                         >
                             {isSubmitting ? 'Processing...' : 'Pay 0.1 SOL'}

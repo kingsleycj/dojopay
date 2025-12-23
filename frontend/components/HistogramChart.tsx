@@ -6,7 +6,7 @@ interface HistogramChartProps {
     height?: number;
 }
 
-export const HistogramChart = ({ data, color = '#8B5CF6', height = 300 }: HistogramChartProps) => {
+export const HistogramChart = ({ data, color = '#f97316', height = 300 }: HistogramChartProps) => {
     const maxValue = Math.max(...data.map(d => d.value), 1);
     const yAxisMax = Math.max(maxValue, 10); // Ensure minimum range of 1-10
     
@@ -16,7 +16,7 @@ export const HistogramChart = ({ data, color = '#8B5CF6', height = 300 }: Histog
                 {data.map((item, index) => (
                     <div key={index} className="flex-1 flex flex-col items-center">
                         <div 
-                            className="w-full bg-purple-500 rounded-t transition-all duration-300 hover:opacity-80"
+                            className="w-full rounded-t transition-all duration-300 hover:opacity-80"
                             style={{ 
                                 height: `${(item.value / yAxisMax) * (height - 40)}px`,
                                 backgroundColor: color

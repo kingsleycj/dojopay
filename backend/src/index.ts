@@ -2,7 +2,8 @@ import express from 'express'
 import userRouter from './routers/user.js'
 import workerRouter from './routers/worker.js'
 import cors from 'cors'
-import { connectDB } from './lib/prisma.js'
+import { connectDB, prismaClient } from './lib/prisma.js'
+import * as fs from 'fs'
 
 const app = express();
 app.use(express.json({ limit: '50mb', type: 'application/json' }));
@@ -26,6 +27,32 @@ app.use(cors({
 }));
 
 export const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
+
+// Health check endpoint
+app.get('/health', async (req, res) => {
+    try {
+        // Check database connectivity
+        await prismaClient.$queryRaw`SELECT 1`;
+        
+        res.status(200).json({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            environment: process.env.NODE_ENV || 'development',
+            version: process.env.npm_package_version || '1.0.0',
+            database: 'connected'
+        });
+    } catch (error) {
+        res.status(503).json({
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            environment: process.env.NODE_ENV || 'development',
+            database: 'disconnected',
+            error: 'Database connection failed'
+        });
+    }
+});
 
 app.use('/v1/user', userRouter)
 app.use('/v1/worker', workerRouter)

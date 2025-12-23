@@ -9,10 +9,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-  // Note: In Prisma 7+, URL should be moved to prisma.config.ts
-  // Keeping here for compatibility with Prisma 5.19.1
+  relationMode = "prisma"
 }
 
 model User {
@@ -23,15 +22,17 @@ model User {
 }
 
 model Task {
-  id          Int          @id @default(autoincrement())
-  title       String       @default("Select your preferred choice")
-  options     Option[]
-  user_id     Int
-  signature   String
-  amount      BigInt
-  done        Boolean      @default(false)
-  user        User         @relation(fields: [user_id], references: [id])
-  submissions Submission[]
+  id            Int      @id @default(autoincrement())
+  title         String   @default("Select your preferred choice")
+  options       Option[]
+  user_id       Int
+  signature     String
+  amount        BigInt
+  done          Boolean  @default(false)
+  user          User     @relation(fields: [user_id], references: [id])
+  submissions   Submission[]
+  createdAt     DateTime @default(now())
+  expiresAt     DateTime? // Optional expiration date set by creator
 }
 
 model Option {
@@ -65,18 +66,12 @@ model Submission {
 }
 
 model Payouts {
-  id        Int       @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   user_id   Int?
-  user      User?     @relation(fields: [user_id], references: [id])
+  user      User?  @relation(fields: [user_id], references: [id])
   worker_id Int?
-  worker    Worker?   @relation(fields: [worker_id], references: [id])
+  worker    Worker? @relation(fields: [worker_id], references: [id])
   amount    BigInt
   signature String
-  status    TxnStatus
-}
-
-enum TxnStatus {
-  Processing
-  Success
-  Failure
+  status    String @default("Processing") // "Processing", "Success", "Failure"
 }

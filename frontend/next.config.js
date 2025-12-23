@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
+  port: 5174,
+  devServer: {
+    port: 5174,
+  },
 };
 
 module.exports = nextConfig;
