@@ -25,7 +25,8 @@ interface Task {
 
 export default function EditTaskPage() {
     const { publicKey } = useWallet();
-    const { taskId } = useParams();
+    const params = useParams<{ taskId: string }>();
+    const taskId = params?.taskId;
     const router = useRouter();
     const [userType, setUserType] = useState<'worker' | 'creator' | null>(null);
     const [task, setTask] = useState<Task | null>(null);

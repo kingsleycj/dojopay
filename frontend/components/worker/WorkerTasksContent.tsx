@@ -249,7 +249,7 @@ export const WorkerTasksContent = ({ onTaskSelect }: WorkerTasksProps) => {
                     <div className="mb-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Select the best option:</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {task.options.map((option, index) => (
+                            {task.options?.map((option, index) => (
                                 <div
                                     key={option.id}
                                     onClick={() => setSelectedOption(option.id)}
