@@ -1,7 +1,7 @@
 'use client';
 
 import { Appbar } from '@/components/Appbar';
-import { Footer } from '@/components/Footer';
+import { ApplicationFooter } from '@/components/ApplicationFooter';
 import { ToastContainer } from '@/components/Toast';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -25,7 +25,8 @@ interface Task {
 
 export default function EditTaskPage() {
     const { publicKey } = useWallet();
-    const { taskId } = useParams();
+    const params = useParams<{ taskId: string }>();
+    const taskId = params?.taskId;
     const router = useRouter();
     const [userType, setUserType] = useState<'worker' | 'creator' | null>(null);
     const [task, setTask] = useState<Task | null>(null);
@@ -150,7 +151,7 @@ export default function EditTaskPage() {
                         <p className="text-gray-600">Please sign in as a creator to access this page.</p>
                     </div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -163,7 +164,7 @@ export default function EditTaskPage() {
                 <div className="flex-grow pt-16 flex justify-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f97316]"></div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -179,7 +180,7 @@ export default function EditTaskPage() {
                         <p className="text-gray-600">The task you're looking for doesn't exist.</p>
                     </div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -195,7 +196,7 @@ export default function EditTaskPage() {
                         <p className="text-gray-600">Only pending tasks can be edited.</p>
                     </div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -280,7 +281,7 @@ export default function EditTaskPage() {
                     </form>
                 </div>
             </div>
-            <Footer />
+            <ApplicationFooter />
         </div>
     );
 }

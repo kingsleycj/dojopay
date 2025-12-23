@@ -99,6 +99,9 @@ function App() {
                 }
             } else if (workerToken) {
                 setUserType('worker');
+                if (window.location.pathname === '/') {
+                    router.push('/worker/dashboard');
+                }
             } else {
                 setUserType(null);
             }
@@ -129,20 +132,29 @@ function App() {
             if (authRole === 'creator') {
                 router.push('/creator/dashboard');
             } else {
-                router.push('/');
+                router.push('/worker/dashboard');
             }
         };
 
         void run();
     }, [authOpen, authRole, publicKey, signingIn, router]);
 
+    useEffect(() => {
+        if (userType === 'worker' && window.location.pathname === '/') {
+            router.push('/worker/dashboard');
+        }
+    }, [userType, router]);
+
     if (userType === 'worker') {
         return (
         <div className="min-h-screen flex flex-col">
             <ToastContainer />
             <Appbar onUserTypeSelect={setUserType} />
-            <div className="flex-grow pt-16">
-                <WorkerView />
+            <div className="flex-grow pt-16 flex justify-center items-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#f97316] mx-auto"></div>
+                    <p className="mt-4 text-gray-600">Redirecting to worker dashboard...</p>
+                </div>
             </div>
             <Footer />
         </div>

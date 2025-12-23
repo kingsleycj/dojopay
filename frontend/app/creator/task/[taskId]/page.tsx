@@ -1,6 +1,6 @@
 "use client"
 import { Appbar } from '@/components/Appbar';
-import { Footer } from '@/components/Footer';
+import { ApplicationFooter } from '@/components/ApplicationFooter';
 import { CreatorSidebar } from '@/components/CreatorSidebar';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { BACKEND_URL, CLOUDFRONT_URL } from '@/utils';
@@ -88,7 +88,7 @@ export default function CreatorTaskDetailPage({ params }: {
                 <div className="flex-grow flex justify-center items-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f97316]"></div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -263,7 +263,7 @@ export default function CreatorTaskDetailPage({ params }: {
                     </div>
                 </div>
             </div>
-            <Footer />
+            <ApplicationFooter />
         </div>
     );
 }

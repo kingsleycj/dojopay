@@ -3,7 +3,7 @@
 import { Upload } from '@/components/Upload';
 import { CreatorSidebar } from '@/components/CreatorSidebar';
 import { Appbar } from '@/components/Appbar';
-import { Footer } from '@/components/Footer';
+import { ApplicationFooter } from '@/components/ApplicationFooter';
 import { ToastContainer } from '@/components/Toast';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -45,7 +45,7 @@ export default function CreatePage() {
                         <p className="text-gray-600">Please sign in as a creator to access this page.</p>
                     </div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -75,7 +75,7 @@ export default function CreatePage() {
                     </div>
                 </div>
             </div>
-            <Footer />
+            <ApplicationFooter />
         </div>
     );
 }

@@ -1,9 +1,9 @@
 'use client';
 
-import { DashboardView } from '@/components/DashboardView';
+import { CreatorDashboardContent } from '@/components/creator/CreatorDashboardContent';
 import { CreatorSidebar } from '@/components/CreatorSidebar';
 import { Appbar } from '@/components/Appbar';
-import { Footer } from '@/components/Footer';
+import { ApplicationFooter } from '@/components/ApplicationFooter';
 import { ToastContainer } from '@/components/Toast';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -49,7 +49,7 @@ export default function DashboardPage() {
                         <p className="text-gray-600">Please sign in as a creator to access this page.</p>
                     </div>
                 </div>
-                <Footer />
+                <ApplicationFooter />
             </div>
         );
     }
@@ -62,11 +62,11 @@ export default function DashboardPage() {
                 <div className="flex flex-col lg:flex-row">
                     <CreatorSidebar activeView="dashboard" onViewChange={() => {}} />
                     <div className="flex-grow lg:ml-64">
-                        <DashboardView />
+                        <CreatorDashboardContent />
                     </div>
                 </div>
             </div>
-            <Footer />
+            <ApplicationFooter />
         </div>
     );
 }
