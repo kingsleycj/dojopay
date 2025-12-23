@@ -189,7 +189,7 @@ router.post("/task", authMiddleware, async (req, res) => {
     });
 
     // Find the parent wallet's balance change - use correct API
-    const accountKeys = transaction?.transaction?.message?.accountKeys || [];
+    const accountKeys = transaction?.transaction?.message?.getAccountKeys() || [];
     
     console.log("Account keys found:", accountKeys);
     console.log("Account keys type:", typeof accountKeys);
@@ -202,9 +202,21 @@ router.post("/task", authMiddleware, async (req, res) => {
         })
     }
 
-    const parentWalletIndex = accountKeys.findIndex(
-        key => key.toString() === PARENT_WALLET_ADDRESS
-    );
+    let parentWalletIndex = -1;
+    
+    if (accountKeys instanceof Array) {
+        parentWalletIndex = accountKeys.findIndex(
+            key => key.toString() === PARENT_WALLET_ADDRESS
+        );
+    } else {
+        // Handle MessageAccountKeys type
+        for (let i = 0; i < accountKeys.length; i++) {
+            if (accountKeys.get(i)?.toString() === PARENT_WALLET_ADDRESS) {
+                parentWalletIndex = i;
+                break;
+            }
+        }
+    }
 
     if (parentWalletIndex === -1 || parentWalletIndex === undefined) {
         console.log("Parent wallet not found in transaction");
