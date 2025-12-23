@@ -50,7 +50,7 @@ export const CreatorTasksContent = ({ onTaskCreate, onTaskSelect }: CreatorTasks
   const router = useRouter();
 
   const handleCreateTask = () => {
-    router.push('/creator/tasks/create');
+    router.push('/creator/create');
   };
 
   const handleViewTask = (taskId: number) => {

@@ -582,7 +582,7 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
             <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
             <div className="space-y-3">
               <button
-                onClick={() => window.open('/creator/tasks/create', '_blank')}
+                onClick={() => window.open('/creator/create', '_blank')}
                 className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <DollarSign className="h-4 w-4" />

@@ -111,7 +111,7 @@ export const CreatorDashboardContent = ({ onTaskCreate, onViewTasks, onViewEarni
   const [solPrice, setSolPrice] = useState<number | null>(null);
 
   const handleCreateTask = () => {
-    router.push('/creator/tasks/create');
+    router.push('/creator/create');
   };
 
   const handleViewTasks = () => {
