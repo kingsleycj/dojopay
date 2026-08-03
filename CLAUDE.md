@@ -19,7 +19,8 @@ Operating manual for this repository. Read this before making changes.
 A Solana-based micro-task marketplace. **Creators** fund a task (image labelling: pick the
 best of N images); **workers** complete it and earn SOL; workers withdraw to their own wallet.
 
-Both sides authenticate by signing a message with their Solana wallet — there are no passwords.
+Sign up with **email, Google, or a Solana wallet**. A wallet is required only to
+*withdraw* — see §4. There is also a separate staff **admin** section at `/admin`.
 
 **Network:** devnet. **Money model:** currently custodial (a platform hot wallet holds task
 funds and pays workers out); moving to an on-chain escrow program in Phase 6.
@@ -82,21 +83,26 @@ src/
 
 ```
 app/
-├── page.tsx        landing + sign-in funnel (honours ?role, ?next, ?ref)
+├── page.tsx        landing (honours ?next, ?ref)
 ├── layout.tsx      mounts WalletProviders → AuthProvider
+├── auth/           login | register | verify | reset | forgot | callback
+├── settings/       wallet + email linking, profile
 ├── creator/        dashboard | tasks | create | task/[taskId] | task/[taskId]/edit | earnings
 ├── worker/         dashboard | tasks | earnings
-└── task/[taskId]/  PUBLIC shareable task page — server-rendered, no session
+├── task/[taskId]/  PUBLIC shareable task page — server-rendered, no session
+└── admin/          SEPARATE section: own layout, own provider, noindex
 components/
 ├── ui/             shadcn primitives — do not hand-edit, regenerate
 ├── landing/        marketing sections
+├── auth/           AuthShell, AlternateSignIn
+├── admin/          AdminChrome, primitives
 ├── creator/        creator-only feature components
 ├── worker/         worker-only feature components
 └── shared/         AppShell, WalletProviders, ShareButton, PublicTaskView
 hooks/              useWithdrawal, use-mobile
 lib/
 ├── api/            typed client + endpoint functions + wire types
-├── auth/           AuthProvider, useAuth, RoleGuard
+├── auth/           AuthProvider, useAuth, RoleGuard, AdminProvider
 └── solana/         cluster config, platform wallet, explorer links
 utils/              pure helpers (lamport/SOL/USD conversion)
 ```
@@ -104,10 +110,14 @@ utils/              pure helpers (lamport/SOL/USD conversion)
 Every signed-in page is `<RoleGuard role=…><AppShell …>{content}</AppShell></RoleGuard>` and
 nothing else — the page files are ~12 lines each.
 
+**`/admin` is fully separate**: its own layout, its own `AdminProvider`, its own token
+key, and a dark theme so it is never ambiguous which surface you are looking at.
+
 **Rules**
 - No component calls `axios` directly. All network access goes through `lib/api/`.
 - No component reads `localStorage` directly for auth. Use the auth context.
 - There is exactly one place that decides the Solana cluster: `lib/solana/config.ts`.
+- Admin pages use `adminApi`/`useAdmin`; user pages use `api`/`useAuth`. Never mix them.
 
 ---
 
@@ -117,15 +127,20 @@ Prisma + PostgreSQL. Schema: `backend/prisma/schema.prisma`.
 
 | Model | Purpose | Key constraints |
 |---|---|---|
-| `User` | a creator, identified by wallet `address` | `address` unique |
-| `Worker` | a worker, identified by wallet `address` | `address` unique |
+| `Account` | **one human**; owns all credentials | `email`, `googleId`, `walletAddress` each unique |
+| `User` | creator *profile* for an account | `account_id` unique |
+| `Worker` | worker *profile* for an account | `account_id` unique |
+| `VerificationToken` | email verify / password reset | only the token **hash** is stored |
 | `Task` | a funded unit of work owned by a `User` | `signature` unique (anti-replay) |
 | `Option` | one image choice belonging to a `Task` | — |
 | `Submission` | one worker's answer to one task | unique `[worker_id, task_id]` |
 | `Payouts` | a withdrawal from platform wallet → worker | `signature` unique (idempotency) |
+| `AdminUser` | staff account | separate table, separate secret |
+| `AuditLog` | append-only activity record | never updated or deleted |
 
-`User` and `Worker` are **separate tables**. The same wallet may hold both roles as two
-independent identities; this is intentional and load-bearing for the two-token auth scheme.
+`Account` is the root of identity. `User` and `Worker` are profiles, created lazily,
+so a person who both posts and completes tasks has **one** login and one audit trail.
+The wallet address lives on `Account`, not on the profiles.
 
 Worker balances are lamport `BigInt`s:
 - `pending_amount` — earned, not yet withdrawn.
@@ -142,30 +157,91 @@ once the escrow program owns its funds.
 
 ## 4. Auth model
 
-Two parallel identities, two JWT secrets, two client-side token keys.
+**One account per person.** `Account` owns the credentials; `User` (creator) and
+`Worker` are profiles hanging off it, created lazily the first time the account acts
+in that role. Signup therefore never asks "creator or worker?", and someone who does
+both has one login and one audit trail.
 
-| Role | Sign-in message | JWT secret | Client storage |
-|---|---|---|---|
-| Creator | `Sign into DojoPay as a creator` | `JWT_SECRET` | `localStorage.token` |
-| Worker | `Sign into DojoPay as a worker` | `WORKER_JWT_SECRET` | `localStorage.workerToken` |
+| Path | How | Notes |
+|---|---|---|
+| Email | password (argon2id) | Verification link required before the account is fully trusted |
+| Google | Passport, `session: false` | Merges into an existing account when the verified email matches |
+| Wallet | ed25519 signature over a server nonce | Creates an account outright; email can be added later in settings |
 
-Flow: client signs the literal message with the wallet → server verifies with
-`nacl.sign.detached.verify` against the public key → upsert row → return JWT.
+All three end at the same account JWT, stored under `localStorage["dojopay.token"]`.
+Admin sessions use a **different secret** and `localStorage["dojopay.adminToken"]`.
 
-Both secrets must be supplied by the environment and must differ. See Known issues #1 for the
-historical bug where the worker secret was derived from Express internals and thus guessable.
+> **Superseded:** there used to be two user secrets, `JWT_SECRET` for creators and
+> `WORKER_JWT_SECRET` for workers. With an `Account` owning both profiles that split
+> became meaningless — a Google user would have had to sign in twice to switch modes.
+> `ADMIN_JWT_SECRET` is now the second secret, and it guards a genuinely different
+> trust boundary.
 
----
+### The wallet gate
+
+An account can browse, post, and complete tasks with only an email. **Withdrawal
+requires a linked wallet**, because SOL needs a destination. Enforced in
+`requireLinkedWallet` middleware and again in `payout.service`, and surfaced in the UI
+as a persistent banner plus a settings prompt rather than an error at the moment of
+cashing out.
+
+Unlinking a wallet is refused while a balance is pending, or when it is the account's
+only credential.
+
+## 4a. Admin
+
+Separate table (`AdminUser`), separate secret, separate route prefix (`/v1/admin`),
+separate frontend section (`/admin`), separate provider. No user token can satisfy an
+admin check even if role logic has a bug.
+
+- **No signup route.** The first OWNER comes from `npm run admin:create`, which runs
+  against the database — staff access requires shell access, not a browser.
+- **TOTP is mandatory.** Login is two-step; the first login forces enrolment and
+  returns a QR code. A token that has not completed the TOTP step is rejected.
+- **Roles:** `OWNER` (everything, including creating admins), `ADMIN` (read +
+  moderate), `ANALYST` (read only).
+- **Powers:** read everything; suspend/ban/reactivate accounts; force-close tasks.
+  **Deliberately cannot** move money, adjust balances, or impersonate — a compromised
+  admin credential is a privacy incident, not a financial one.
+- Every admin action is audited, **including simply viewing an account**.
+
+## 4b. Audit log
+
+Append-only `AuditLog`, never updated or deleted by application code. Records actor
+(account / admin / system), action, entity, severity, IP, and metadata.
+
+Two rules:
+1. **A failed audit write must never break the audited action** — it is logged and
+   swallowed. Refusing a worker's submission because the audit table is unavailable
+   would be worse than losing one line of history.
+2. **Never put secrets in `metadata`** — every admin reads this table.
 
 ## 5. API surface
 
 Base: `/v1`. All money values crossing the wire are **lamport strings**, never numbers
 (BigInt does not survive JSON, and floats lose precision).
 
+### Auth — `/v1/auth`
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/register` | email + password signup |
+| POST | `/login` | email + password login |
+| GET | `/wallet/challenge` | nonce + message for the wallet to sign |
+| POST | `/wallet` | wallet sign-in / signup |
+| GET | `/google` · `/google/callback` | OAuth (registered only when configured) |
+| GET | `/google/status` | whether the Google button should render |
+| POST | `/verify-email` · `/resend-verification` | email verification |
+| POST | `/forgot-password` · `/reset-password` | password recovery |
+| GET | `/me` | current account |
+| PATCH | `/profile` | display name |
+| POST | `/change-password` | change password |
+| POST | `/link-email` | add email to a wallet-first account |
+| POST/DELETE | `/link-wallet` | attach or detach the payout wallet |
+| POST | `/logout` | records the event; tokens are stateless |
+
 ### Creator — `/v1/user`
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/signin` | wallet-signature login |
 | GET | `/presignedUrl` | S3 presigned POST for image upload |
 | POST | `/task` | verify funding tx, create task |
 | GET | `/tasks` | list own tasks |
@@ -178,7 +254,6 @@ Base: `/v1`. All money values crossing the wire are **lamport strings**, never n
 ### Worker — `/v1/worker`
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/signin` | wallet-signature login |
 | GET | `/nextTask` | next unanswered, unexpired, unfilled task |
 | POST | `/submission` | submit a choice, credit `pending_amount` |
 | GET | `/balance` | pending + withdrawn balances |
@@ -186,7 +261,22 @@ Base: `/v1`. All money values crossing the wire are **lamport strings**, never n
 | GET | `/payouts` | own withdrawal history |
 | GET | `/earnings` | paginated combined ledger |
 | GET | `/dashboard` | metrics + next task |
-| POST | `/payout` | signed withdrawal request |
+| POST | `/payout` | signed withdrawal — **requires a linked wallet** |
+
+### Admin — `/v1/admin`
+Separate secret; no user token is ever accepted. No signup route exists.
+
+| Method | Path | Purpose | Role |
+|---|---|---|---|
+| POST | `/auth/login` | step 1, returns a 2FA challenge | — |
+| POST | `/auth/verify` | step 2, TOTP → session | — |
+| POST | `/auth/enroll` | first-login 2FA enrolment | — |
+| GET | `/overview` · `/growth` | operator dashboard | any |
+| GET | `/accounts` · `/accounts/:id` · `/accounts/:id/activity` | account directory + timeline | any |
+| GET | `/tasks` | task list | any |
+| GET | `/audit` | filtered audit log | any |
+| POST | `/accounts/:id/moderate` | suspend / ban / reactivate | OWNER, ADMIN |
+| POST | `/tasks/:id/force-close` | stop submissions on a task | OWNER, ADMIN |
 
 ### Public
 | Method | Path | Purpose |
@@ -205,6 +295,7 @@ npm run dev              # nodemon + tsx
 npm run build            # prisma generate && tsc
 npm start
 npm run test:run         # vitest, no watch
+npm run admin:create     # bootstrap the first admin (no HTTP route does this)
 
 # frontend
 cd frontend
@@ -357,6 +448,38 @@ Goal: remove the platform's ability to abscond with or lose task funds.
 > that require edition 2024 / rustc 1.85, which this toolchain (rustc 1.79,
 > solana-cli 1.18) cannot build.
 
+### Phase 8 — Account identity `DONE`
+- [x] `Account` table owning email / password / Google / wallet; `User` and `Worker`
+      become lazily-created profiles
+- [x] Email + password (argon2id), Google via Passport, wallet with a server nonce
+- [x] Mailer interface (Resend + console driver); verification and password reset
+- [x] Password reset is enumeration-safe; only token hashes are stored
+- [x] Wallet linking/unlinking in settings, with the only-credential and
+      pending-balance guards
+- [x] **Wallet gate**: earning needs an email, withdrawing needs a wallet
+- [x] Collapsed the two user tokens into one account session
+
+### Phase 9 — Admin & audit `DONE`
+- [x] `AdminUser` with its own secret and route prefix; no signup route
+- [x] Two-step login, mandatory TOTP, enrolment forced on first login
+- [x] Roles: OWNER / ADMIN / ANALYST
+- [x] Moderation: suspend / ban / reactivate, force-close task — no money movement
+- [x] Append-only `AuditLog` across auth, tasks, submissions, payouts, admin actions
+- [x] `npm run admin:create` CLI bootstrap
+
+### Phase 10 — Auth & admin UI `DONE`
+- [x] `/auth/{login,register,verify,reset,forgot,callback}`
+- [x] `/settings` — wallet linking, email linking, profile
+- [x] Wallet-gate banner and settings badge, so "cannot be paid" is always visible
+- [x] `/admin` section: 2FA login, overview, accounts, account detail, tasks, audit log
+- [x] Mode switch replaces the second sign-in
+
+### Phase 11 — Follow-ups `TODO`
+- [ ] Admin management UI for creating further admins (currently CLI only)
+- [ ] Session revocation list — logout is currently client-side only
+- [ ] Rate-limit password reset per account, not just per IP
+- [ ] Decide the policy for banning an account that is owed money
+
 ### Phase 7 — Hardening & docs `WIP`
 - [x] Unit tests for every Phase 3 economic rule (cap, race, idempotency, status lifecycle)
 - [x] Truth-up `README.md` — it claimed escrow, rate limiting, reputation, real-time updates
@@ -384,6 +507,16 @@ Last verified on the `refactor/architecture-and-escrow` branch:
 | `escrow   cargo test` | 7 passed |
 | `escrow   cargo-build-sbf` | `dojopay_escrow.so`, 248K |
 
+After Phases 8–10 (branch `feat/accounts-and-admin`):
+
+| Check | Result |
+|---|---|
+| `backend  npx tsc --noEmit` | clean |
+| `backend  npm run test:run` | 172 passed |
+| `frontend npx tsc --noEmit` | clean |
+| `frontend npm run test:run` | 34 passed |
+| `frontend npx next build` | clean, 26 routes |
+
 Not verified: nothing has been run against a live database, a real RPC endpoint,
 or a validator. No end-to-end run of create → submit → withdraw has happened.
 
@@ -397,7 +530,11 @@ or a validator. No end-to-end run of create → submit → withdraw has happened
 | 2 | Dev database may be reset | Confirmed no production data worth preserving, so Phase 2 regenerates migrations from scratch rather than hand-writing a baseline. |
 | 3 | Move to on-chain escrow (Phase 6) rather than adding fiat off-ramps | Custody is the deeper problem; an off-ramp on top of a hot-wallet ledger would compound it. USDC and fiat come after escrow. |
 | 4 | Money crosses the wire as lamport strings | BigInt is not JSON-serializable and floats lose precision at 9 decimals. |
-| 5 | `User` and `Worker` stay separate tables | Already load-bearing for two-token auth; merging them is a larger migration than this branch warrants. |
+| 5 | ~~`User` and `Worker` stay separate tables~~ **Superseded by #6.** | Was justified by the two-token auth scheme, which no longer exists. |
+| 6 | `Account` umbrella over `User`/`Worker`, one session per person | Email and Google logins are not wallet-shaped, so identity had to move off the wallet. Profiles stay as separate tables so no task/submission/payout foreign key moves. |
+| 7 | Wallet required to withdraw, not to sign up | "Install a browser extension" is the single biggest drop-off for a new worker. Deferring it to the moment money is actually leaving means people can try the product first. |
+| 8 | Admins cannot move money | Bounds the blast radius of a compromised admin credential to a privacy incident. Balance adjustments and manual payouts stay off-platform deliberately. |
+| 9 | Admin 2FA is mandatory, and admins are CLI-created | Staff tooling reads every user's data; a leaked password alone must not be enough, and self-registration must not exist. |
 
 ---
 

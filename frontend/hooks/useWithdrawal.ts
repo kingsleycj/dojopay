@@ -1,29 +1,52 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { buildWithdrawalMessage, workerEndpoints } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { showToast } from "@/components/Toast";
 import { lamportsToSol } from "@/utils/convert";
 
 /**
  * Worker withdrawal.
  *
- * The backend requires a wallet signature over
- * `Withdraw <lamports> to <address>`; the earnings page used to POST an empty
- * body and therefore always got a 400 back. Both entry points now share this
- * hook, so the flow cannot drift apart again.
+ * Two gates, in order:
+ *  1. **A linked wallet.** An account can sign up with only an email, so there
+ *     may be nowhere to send SOL. Rather than surfacing the backend's 403, this
+ *     sends the user to settings, which is where the problem is fixable.
+ *  2. **A wallet signature** over `Withdraw <lamports> to <address>`, which the
+ *     backend verifies. The earnings page used to POST an empty body and
+ *     therefore always failed; both entry points now share this hook.
  */
 export function useWithdrawal(onSuccess?: () => void | Promise<void>) {
   const { publicKey, signMessage } = useWallet();
+  const { account } = useAuth();
+  const router = useRouter();
   const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   const withdraw = useCallback(
     async (pendingLamports: string) => {
       if (isWithdrawing) return;
 
+      if (!account?.walletAddress) {
+        showToast("Connect a wallet to withdraw — taking you to settings", "info");
+        router.push("/settings");
+        return;
+      }
+
       if (!publicKey || !signMessage) {
-        showToast("Connect your wallet to withdraw", "error");
+        showToast("Unlock your wallet to sign the withdrawal", "error");
+        return;
+      }
+
+      // The linked wallet is the destination, so signing with a different
+      // connected wallet would produce a signature the backend cannot verify.
+      if (publicKey.toBase58() !== account.walletAddress) {
+        showToast(
+          "Your connected wallet is not the one linked to this account. Switch wallets and try again.",
+          "error",
+        );
         return;
       }
 
@@ -37,7 +60,7 @@ export function useWithdrawal(onSuccess?: () => void | Promise<void>) {
       setIsWithdrawing(true);
       try {
         const message = new TextEncoder().encode(
-          buildWithdrawalMessage(pendingLamports, publicKey.toBase58()),
+          buildWithdrawalMessage(pendingLamports, account.walletAddress),
         );
         const signature = await signMessage(message);
 
@@ -49,18 +72,24 @@ export function useWithdrawal(onSuccess?: () => void | Promise<void>) {
         );
         await onSuccess?.();
       } catch (error: any) {
-        // A user dismissing the wallet prompt is a cancellation, not a failure.
+        // Dismissing the wallet prompt is a cancellation, not a failure.
         if (error?.name === "WalletSignMessageError" || /reject|denied/i.test(error?.message ?? "")) {
           showToast("Withdrawal cancelled", "info");
-        } else {
-          showToast(error?.message ?? "Withdrawal failed. Please try again.", "error");
+          return;
         }
+
+        if (error?.code === "WALLET_REQUIRED") {
+          router.push("/settings");
+          return;
+        }
+
+        showToast(error?.message ?? "Withdrawal failed. Please try again.", "error");
       } finally {
         setIsWithdrawing(false);
       }
     },
-    [publicKey, signMessage, isWithdrawing, onSuccess],
+    [account?.walletAddress, publicKey, signMessage, isWithdrawing, onSuccess, router],
   );
 
-  return { withdraw, isWithdrawing };
+  return { withdraw, isWithdrawing, canWithdraw: Boolean(account?.walletAddress) };
 }

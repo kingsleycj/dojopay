@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { buildWithdrawalMessage } from "@/lib/api";
-import { clearTokens, getToken, setToken } from "@/lib/api/client";
+import { clearLegacyTokens, clearToken, getToken, setToken } from "@/lib/api/client";
 
 /**
  * The withdrawal message must match the backend's `buildWithdrawalMessage`
@@ -29,22 +29,28 @@ describe("token storage", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps creator and worker tokens in separate slots", () => {
-    setToken("creator", "creator-token");
-    setToken("worker", "worker-token");
+  /**
+   * A user token must never be reachable from the admin client, and vice
+   * versa — separate scopes are what makes that structural rather than a
+   * matter of remembering.
+   */
+  it("keeps the account and admin sessions in separate slots", () => {
+    setToken("account", "account-token");
+    setToken("admin", "admin-token");
 
-    expect(getToken("creator")).toBe("creator-token");
-    expect(getToken("worker")).toBe("worker-token");
+    expect(getToken("account")).toBe("account-token");
+    expect(getToken("admin")).toBe("admin-token");
   });
 
-  it("clears both roles at once", () => {
-    setToken("creator", "creator-token");
-    setToken("worker", "worker-token");
+  it("clears one scope without touching the other", () => {
+    setToken("account", "account-token");
+    setToken("admin", "admin-token");
 
-    clearTokens();
+    clearToken("account");
 
-    expect(getToken("creator")).toBeNull();
-    expect(getToken("worker")).toBeNull();
+    expect(getToken("account")).toBeNull();
+    // Signing out of the app must not sign you out of admin tooling.
+    expect(getToken("admin")).toBe("admin-token");
   });
 
   /**
@@ -55,12 +61,28 @@ describe("token storage", () => {
     const listener = vi.fn();
     window.addEventListener("dojopay:auth-changed", listener);
 
-    setToken("worker", "token");
+    setToken("account", "token");
     expect(listener).toHaveBeenCalledTimes(1);
 
-    clearTokens();
+    clearToken("account");
     expect(listener).toHaveBeenCalledTimes(2);
 
     window.removeEventListener("dojopay:auth-changed", listener);
+  });
+
+  /**
+   * Tokens from the two-token era were signed with secrets that no longer
+   * exist, so leaving them behind only produces confusing 401s.
+   */
+  it("drops legacy creator/worker tokens without touching current ones", () => {
+    window.localStorage.setItem("token", "old-creator-token");
+    window.localStorage.setItem("workerToken", "old-worker-token");
+    setToken("account", "current-token");
+
+    clearLegacyTokens();
+
+    expect(window.localStorage.getItem("token")).toBeNull();
+    expect(window.localStorage.getItem("workerToken")).toBeNull();
+    expect(getToken("account")).toBe("current-token");
   });
 });

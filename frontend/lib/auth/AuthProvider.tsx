@@ -2,128 +2,290 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { authApi, clearTokens, getToken, setToken } from "@/lib/api";
+import {
+  authApi,
+  clearLegacyTokens,
+  clearToken,
+  getToken,
+  setToken,
+  type Account,
+} from "@/lib/api";
 
 /**
  * Auth state for the whole app.
  *
- * Replaces the previous approach, where six different pages each ran
- * `setInterval(checkLocalStorage, 1000)` to notice sign-in changes. Token
- * writes now dispatch a `dojopay:auth-changed` event and everything re-reads
- * from one source.
+ * One account session, not one per role. `mode` is a client-side view
+ * preference for which dashboard to show — switching it does not touch the
+ * server, because the same session already authorises both. Profiles are
+ * created lazily by the API the first time the account acts in a role.
  */
 
-export type Role = "creator" | "worker";
+export type Mode = "creator" | "worker";
+
+const MODE_KEY = "dojopay.mode";
 
 interface AuthState {
-  role: Role | null;
-  walletAddress: string | null;
-  isConnected: boolean;
-  isSigningIn: boolean;
-  /** False until the first client-side read of localStorage completes. */
+  account: Account | null;
+  isAuthenticated: boolean;
+  /** False until the first client-side session check completes. */
   isReady: boolean;
-  signIn: (role: Role, options?: { referredBy?: string | null }) => Promise<boolean>;
+  isBusy: boolean;
+
+  /** Which dashboard the user is currently looking at. */
+  mode: Mode;
+  setMode: (mode: Mode) => void;
+
+  /** Wallet connection state, independent of being signed in. */
+  walletConnected: boolean;
+  walletAddress: string | null;
+
+  refresh: () => Promise<void>;
+  loginWithEmail: (email: string, password: string) => Promise<boolean>;
+  registerWithEmail: (input: {
+    email: string;
+    password: string;
+    displayName?: string;
+    referredBy?: string | null;
+  }) => Promise<boolean>;
+  loginWithWallet: (referredBy?: string | null) => Promise<boolean>;
+  linkWallet: () => Promise<boolean>;
+  adoptSession: (token: string) => Promise<void>;
   signOut: () => void;
+  error: string | null;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
-function readRole(): Role | null {
-  if (getToken("creator")) return "creator";
-  if (getToken("worker")) return "worker";
-  return null;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { publicKey, signMessage, disconnect } = useWallet();
-  const [role, setRole] = useState<Role | null>(null);
+  const [account, setAccount] = useState<Account | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [mode, setModeState] = useState<Mode>("worker");
+  const [error, setError] = useState<string | null>(null);
 
   const walletAddress = publicKey?.toBase58() ?? null;
 
-  const refresh = useCallback(() => setRole(readRole()), []);
+  const refresh = useCallback(async () => {
+    if (!getToken("account")) {
+      setAccount(null);
+      return;
+    }
+    try {
+      setAccount(await authApi.me());
+    } catch {
+      // An invalid token is cleared by the client interceptor; treat as signed out.
+      setAccount(null);
+    }
+  }, []);
 
-  // Initial read plus subscriptions. `storage` covers other tabs; the custom
-  // event covers this one.
+  // Initial load, plus cross-tab and same-tab session changes.
   useEffect(() => {
-    refresh();
-    setIsReady(true);
+    clearLegacyTokens();
 
-    window.addEventListener("dojopay:auth-changed", refresh);
-    window.addEventListener("storage", refresh);
+    const stored = window.localStorage.getItem(MODE_KEY);
+    if (stored === "creator" || stored === "worker") setModeState(stored);
+
+    void refresh().finally(() => setIsReady(true));
+
+    const onChange = () => void refresh();
+    window.addEventListener("dojopay:auth-changed", onChange);
+    window.addEventListener("storage", onChange);
     return () => {
-      window.removeEventListener("dojopay:auth-changed", refresh);
-      window.removeEventListener("storage", refresh);
+      window.removeEventListener("dojopay:auth-changed", onChange);
+      window.removeEventListener("storage", onChange);
     };
   }, [refresh]);
 
-  // A disconnected wallet cannot own a session.
-  useEffect(() => {
-    if (isReady && !publicKey) {
-      clearTokens();
-      setRole(null);
-    }
-  }, [publicKey, isReady]);
+  const setMode = useCallback((next: Mode) => {
+    setModeState(next);
+    window.localStorage.setItem(MODE_KEY, next);
+  }, []);
 
-  const signIn = useCallback(
-    async (nextRole: Role, options?: { referredBy?: string | null }) => {
-      if (!publicKey || !signMessage) return false;
+  const clearError = useCallback(() => setError(null), []);
 
-      // Already holding a token for this role.
-      if (getToken(nextRole)) {
-        setRole(nextRole);
-        return true;
-      }
+  /** Adopt a token minted elsewhere — the Google OAuth callback. */
+  const adoptSession = useCallback(
+    async (token: string) => {
+      setToken("account", token);
+      await refresh();
+    },
+    [refresh],
+  );
 
-      setIsSigningIn(true);
+  const loginWithEmail = useCallback(
+    async (email: string, password: string) => {
+      setIsBusy(true);
+      setError(null);
       try {
-        const message = new TextEncoder().encode(
-          nextRole === "creator"
-            ? "Sign into DojoPay as a creator"
-            : "Sign into DojoPay as a worker",
-        );
-        const signature = await signMessage(message);
-        const address = publicKey.toBase58();
-
-        const result =
-          nextRole === "creator"
-            ? await authApi.signInCreator(address, Array.from(signature))
-            : await authApi.signInWorker(address, Array.from(signature), options?.referredBy);
-
-        setToken(nextRole, result.token);
-        setRole(nextRole);
+        const result = await authApi.login({ email, password });
+        setToken("account", result.token);
+        setAccount(result.account);
         return true;
-      } catch (error) {
-        console.error("Sign-in failed", error);
+      } catch (err: any) {
+        setError(err?.message ?? "Could not sign in");
         return false;
       } finally {
-        setIsSigningIn(false);
+        setIsBusy(false);
+      }
+    },
+    [],
+  );
+
+  const registerWithEmail = useCallback(
+    async (input: {
+      email: string;
+      password: string;
+      displayName?: string;
+      referredBy?: string | null;
+    }) => {
+      setIsBusy(true);
+      setError(null);
+      try {
+        const result = await authApi.register(input);
+        setToken("account", result.token);
+        setAccount(result.account);
+        return true;
+      } catch (err: any) {
+        setError(err?.message ?? "Could not create your account");
+        return false;
+      } finally {
+        setIsBusy(false);
+      }
+    },
+    [],
+  );
+
+  /**
+   * Wallet sign-in.
+   *
+   * The nonce comes from the server and is embedded in the signed message, so a
+   * signature captured from one sign-in cannot be replayed.
+   */
+  const loginWithWallet = useCallback(
+    async (referredBy?: string | null) => {
+      if (!publicKey || !signMessage) {
+        setError("Connect your wallet first");
+        return false;
+      }
+
+      setIsBusy(true);
+      setError(null);
+      try {
+        const challenge = await authApi.walletChallenge("signin");
+        const signature = await signMessage(new TextEncoder().encode(challenge.message));
+
+        const result = await authApi.walletAuth({
+          walletAddress: publicKey.toBase58(),
+          signature: Array.from(signature),
+          nonce: challenge.nonce,
+          referredBy,
+        });
+
+        setToken("account", result.token);
+        setAccount(result.account);
+        return true;
+      } catch (err: any) {
+        setError(
+          isUserRejection(err) ? "Signature cancelled" : (err?.message ?? "Could not sign in"),
+        );
+        return false;
+      } finally {
+        setIsBusy(false);
       }
     },
     [publicKey, signMessage],
   );
 
+  /** Attach a wallet to an existing email/Google account — the withdrawal gate. */
+  const linkWallet = useCallback(async () => {
+    if (!publicKey || !signMessage) {
+      setError("Connect your wallet first");
+      return false;
+    }
+
+    setIsBusy(true);
+    setError(null);
+    try {
+      const challenge = await authApi.walletChallenge("link");
+      const signature = await signMessage(new TextEncoder().encode(challenge.message));
+
+      const updated = await authApi.linkWallet({
+        walletAddress: publicKey.toBase58(),
+        signature: Array.from(signature),
+        nonce: challenge.nonce,
+      });
+
+      setAccount(updated);
+      return true;
+    } catch (err: any) {
+      setError(
+        isUserRejection(err) ? "Signature cancelled" : (err?.message ?? "Could not link wallet"),
+      );
+      return false;
+    } finally {
+      setIsBusy(false);
+    }
+  }, [publicKey, signMessage]);
+
   const signOut = useCallback(() => {
-    clearTokens();
-    setRole(null);
-    void disconnect();
+    // Best-effort: the audit entry is nice to have, the local sign-out is not
+    // conditional on it.
+    void authApi.logout().catch(() => undefined);
+    clearToken("account");
+    setAccount(null);
+    void disconnect().catch(() => undefined);
   }, [disconnect]);
 
   const value = useMemo<AuthState>(
     () => ({
-      role,
-      walletAddress,
-      isConnected: Boolean(publicKey),
-      isSigningIn,
+      account,
+      isAuthenticated: Boolean(account),
       isReady,
-      signIn,
+      isBusy,
+      mode,
+      setMode,
+      walletConnected: Boolean(publicKey),
+      walletAddress,
+      refresh,
+      loginWithEmail,
+      registerWithEmail,
+      loginWithWallet,
+      linkWallet,
+      adoptSession,
       signOut,
+      error,
+      clearError,
     }),
-    [role, walletAddress, publicKey, isSigningIn, isReady, signIn, signOut],
+    [
+      account,
+      isReady,
+      isBusy,
+      mode,
+      setMode,
+      publicKey,
+      walletAddress,
+      refresh,
+      loginWithEmail,
+      registerWithEmail,
+      loginWithWallet,
+      linkWallet,
+      adoptSession,
+      signOut,
+      error,
+      clearError,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+/** Dismissing a wallet prompt is a cancellation, not a failure worth shouting about. */
+function isUserRejection(error: unknown): boolean {
+  const message = (error as { message?: string })?.message ?? "";
+  const name = (error as { name?: string })?.name ?? "";
+  return name.includes("WalletSignMessageError") || /reject|denied|cancel/i.test(message);
 }
 
 export function useAuth(): AuthState {

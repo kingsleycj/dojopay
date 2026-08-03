@@ -21,7 +21,7 @@ import type { PublicTask } from "@/lib/api/types";
 export function PublicTaskView({ task }: { task: PublicTask }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { role, isConnected, isReady, isSigningIn, signIn } = useAuth();
+  const { isAuthenticated, isReady, mode } = useAuth();
   const [mounted, setMounted] = useState(false);
 
   const referrer = searchParams?.get("ref") ?? null;
@@ -32,29 +32,20 @@ export function PublicTaskView({ task }: { task: PublicTask }) {
   const filled = task.maxSubmissions - task.spotsRemaining;
   const progress = (filled / task.maxSubmissions) * 100;
 
-  const goToTask = () => router.push("/worker/tasks");
-
-  const handleStart = async () => {
-    if (role === "worker") return goToTask();
-
-    if (role === "creator") {
-      // A creator opening a worker link: send them somewhere useful rather than
-      // silently failing.
-      router.push("/creator/dashboard");
+  /**
+   * One account covers both modes, so a signed-in visitor always goes straight
+   * to the task. Everyone else is sent to sign-up with the task preserved as
+   * `next`, so they land back here rather than on a generic dashboard.
+   */
+  const handleStart = () => {
+    if (isAuthenticated) {
+      router.push("/worker/tasks");
       return;
     }
 
-    if (!isConnected) {
-      // Preserve the destination through the connect step so the visitor lands
-      // back on the task instead of a generic dashboard.
-      const next = encodeURIComponent(`/task/${task.id}`);
-      const ref = referrer ? `&ref=${encodeURIComponent(referrer)}` : "";
-      router.push(`/?role=worker&next=${next}${ref}`);
-      return;
-    }
-
-    const ok = await signIn("worker", { referredBy: referrer });
-    if (ok) goToTask();
+    const params = new URLSearchParams({ next: `/task/${task.id}` });
+    if (referrer) params.set("ref", referrer);
+    router.push(`/auth/register?${params.toString()}`);
   };
 
   return (
@@ -131,29 +122,25 @@ export function PublicTaskView({ task }: { task: PublicTask }) {
 
                 <button
                   onClick={handleStart}
-                  disabled={!isReady || isSigningIn}
+                  disabled={!isReady}
                   className="w-full rounded-xl bg-[#f97316] px-6 py-3 font-semibold text-white hover:bg-[#ea580c] disabled:opacity-50 transition-colors"
                 >
-                  {isSigningIn
-                    ? "Signing you in…"
-                    : role === "worker"
-                      ? "Open this task"
-                      : isConnected
-                        ? "Sign in and start earning"
-                        : "Start earning — it takes a minute"}
+                  {isAuthenticated ? "Open this task" : "Start earning — it takes a minute"}
                 </button>
 
-                {role !== "worker" && (
+                {!isAuthenticated && (
                   <div className="mt-4 rounded-lg bg-gray-50 border border-gray-200 p-4">
                     <div className="flex items-start gap-2 text-sm text-gray-700">
                       <Wallet className="w-4 h-4 mt-0.5 flex-shrink-0 text-gray-400" />
                       <div>
                         <p className="font-medium text-gray-900 mb-1">New here?</p>
+                        {/* Sign-up needs only an email; the wallet is deferred
+                            until withdrawal, which is what keeps this funnel
+                            from dying at "install a browser extension". */}
                         <p className="text-gray-600">
-                          You get paid in SOL directly to a Solana wallet — DojoPay never
-                          holds your keys. If you do not have one yet, we will help you
-                          connect Phantom or Solflare, which takes about a minute and is
-                          free.
+                          Sign up with an email or Google and start straight away. You will
+                          connect a Solana wallet when you are ready to withdraw — that is
+                          where your SOL gets paid, and DojoPay never holds your keys.
                         </p>
                       </div>
                     </div>
