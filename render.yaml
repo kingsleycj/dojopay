@@ -4,16 +4,25 @@ services:
     env: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npm run build
+    # `npm ci` is reproducible and Render already installs before building, so
+    # `npm run build` no longer shells out to another install.
+    buildCommand: npm ci && npm run build
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
+      # Render sets NODE_ENV=production, which makes npm skip devDependencies.
+      # dotenv, prisma and tsx are runtime dependencies for that reason.
       - key: PORT
         value: 10000
       - key: DATABASE_URL
         sync: false
       - key: RPC_URL
+        sync: false
+      # Wallet that receives task funding and settles payouts. Must match the
+      # frontend's NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS.
+      - key: PLATFORM_WALLET_ADDRESS
         sync: false
       - key: PRIVATE_KEY
         sync: false
@@ -25,9 +34,15 @@ services:
         sync: false
       - key: S3_BUCKET_SECRET_ACCESS_KEY
         sync: false
-      - key: S3_KEY
-        value: /dojo
+      - key: CLOUDFRONT_URL
+        sync: false
+      # Creator tokens.
       - key: JWT_SECRET
+        generateValue: true
+      # Worker tokens. Must be independently generated — a shared secret would
+      # let a creator token authenticate as a worker, and the previous code
+      # derived this value from the Express app object, making it guessable.
+      - key: WORKER_JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
         sync: false

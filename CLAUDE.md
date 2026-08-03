@@ -357,12 +357,35 @@ Goal: remove the platform's ability to abscond with or lose task funds.
 > that require edition 2024 / rustc 1.85, which this toolchain (rustc 1.79,
 > solana-cli 1.18) cannot build.
 
-### Phase 7 — Hardening & docs `TODO`
-- [ ] Unit tests for every Phase 3 economic rule (cap, idempotency, status lifecycle)
+### Phase 7 — Hardening & docs `WIP`
+- [x] Unit tests for every Phase 3 economic rule (cap, race, idempotency, status lifecycle)
+- [x] Truth-up `README.md` — it claimed escrow, rate limiting, reputation, real-time updates
+      and multi-task support that did not exist. Now has an explicit "Not yet built" section
+      and a "Known limitations" list under Security.
+- [x] `.env.example` for both apps; `render.yaml` gains `WORKER_JWT_SECRET`,
+      `PLATFORM_WALLET_ADDRESS`, a health check, and `npm ci`
 - [ ] Integration test: create → submit ×N → task closes → withdraw
 - [ ] Rotate the credentials exposed in `DEPLOYMENT.md`; move to a secret manager
-- [ ] Truth-up `README.md` — it currently claims escrow, rate limiting, and reputation that do not exist
-- [ ] CI workflow running both suites on PR
+- [ ] CI workflow running all three suites on PR
+- [ ] Redis-backed rate limiting (the current limiter is per-process)
+
+## 7a. Verification status
+
+Last verified on the `refactor/architecture-and-escrow` branch:
+
+| Check | Result |
+|---|---|
+| `backend  npx tsc --noEmit` | clean |
+| `backend  npm run test:run` | 76 passed |
+| `backend  npm run build` | clean (prisma generate + tsc → `dist/`) |
+| `frontend npx tsc --noEmit` | clean |
+| `frontend npm run test:run` | 33 passed |
+| `frontend npx next build` | clean, 13 routes |
+| `escrow   cargo test` | 7 passed |
+| `escrow   cargo-build-sbf` | `dojopay_escrow.so`, 248K |
+
+Not verified: nothing has been run against a live database, a real RPC endpoint,
+or a validator. No end-to-end run of create → submit → withdraw has happened.
 
 ---
 

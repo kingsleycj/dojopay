@@ -1,238 +1,247 @@
 # DojoPay
 
-DojoPay is a decentralized task marketplace built on Solana, its a platform that connects creators with workers through instant task despensation, secure SOL payments and escrow services.
+DojoPay is a task marketplace built on Solana. Creators fund small tasks, workers
+complete them, and workers get paid in SOL to their own wallet.
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
+> **Status: devnet, pre-production.** Payouts are currently **custodial** — a
+> platform wallet holds task funds and pays workers out. The on-chain escrow
+> program that removes this is written and builds, but is not deployed or
+> audited. See [escrow/README.md](escrow/README.md).
+
 ## Table of Contents
 
-- [Overview](#overview)
-- [Features](#features)
-- [How It Works](#how-it-works)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-- [API Documentation](#api-documentation)
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [API](#api)
 - [Deployment](#deployment)
 - [Security](#security)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
-- [Support](#support)
-- [License](#license)
 
-## Overview
+## What it does
 
-DojoPay revolutionizes the gig economy by leveraging Solana blockchain for instant, secure payments. Creators can define tasks, set payments, and receive verified work submissions, while workers earn SOL by completing tasks with automatic payment verification.
+The current task type is **image selection**: a creator uploads a set of images
+and asks workers to pick the best one. Each task is funded with **0.1 SOL** and
+accepts **100 submissions**, so each worker earns **0.001 SOL**. A task closes
+automatically once it is full.
 
-### Current Implementation
+### For creators
+- Create tasks, funded on chain before the task goes live
+- Watch results and per-option vote counts as submissions arrive
+- Share a task with a public link that works for people who have no account yet
+- Analytics computed from real timestamps
 
-**Image Labeling Platform**
-- Task Type: Image annotation and labeling
-- Workflow: Creators upload images → Workers label → System verifies → Auto-payment
-- Payment: 0.1 SOL per completed task
-- Verification: Automated validation of submitted labels
+### For workers
+- Browse available tasks, one at a time
+- Get credited immediately on submission
+- Withdraw the accumulated balance to your own wallet, authorised by a wallet
+  signature over the exact amount and destination
 
-## Features
+### Not yet built
+Listed here because earlier versions of this README claimed them:
+reputation/ratings, on-chain escrow (written, not deployed), fiat off-ramps,
+real-time/WebSocket updates, task types other than image selection, and a
+mobile app.
 
-### For Creators
-- **Task Management**: Create and manage multiple task types
-- **Escrow Services**: Secure payment holding until task verification
-- **Analytics Dashboard**: Track task performance and worker metrics
-- **Secure Payments**: Automatic SOL transfers upon verification
+## How it works
 
-### For Workers
-- **Task Discovery**: Browse available jobs matching your skills
-- **Instant Payments**: Receive SOL automatically upon verification
-- **Reputation System**: Build your profile with quality work ratings
-- **Diverse Opportunities**: Access various task types and projects
+**Creator:** connect wallet → sign in → upload images → send 0.1 SOL to the
+platform wallet → the backend verifies that exact transaction on chain (correct
+amount, correct recipient, correct payer, and that it did not fail) → the task
+goes live. Each funding signature can only ever create one task.
 
-### Platform Capabilities
-- **Multi-task Support**: Image labeling, text classification, data annotation, content creation, quality assurance, and research tasks
-- **Blockchain Integration**: Non-custodial wallet connections with secure smart contracts
-<!-- - **Real-time Updates**: Live status tracking via WebSocket connections -->
-- **Marketplace**: Advanced task discovery and worker matching
+**Worker:** connect wallet → sign in → open a task → pick an option → balance is
+credited inside a database transaction that also claims one of the task's 100
+slots → withdraw when ready.
 
-## How It Works
+**Withdrawal:** the worker signs `Withdraw <lamports> to <address>`. The backend
+verifies the signature, debits the balance *before* broadcasting, sends the SOL,
+and records the payout as `SUCCESS` or `FAILED` — restoring the balance if the
+transfer fails.
 
-### For Creators
+## Tech stack
 
-1. **Connect Wallet**: Authenticate with your Solana wallet (Phantom, Solflare, etc.)
-2. **Define Task**: Set requirements, payment amount, and verification criteria
-3. **Deposit Funds**: SOL held in escrow until task completion
-4. **Review Submissions**: Approve or reject completed work
-5. **Auto-Payment**: System releases SOL to verified workers
+**Backend** — Node 22, Express 5, PostgreSQL via Prisma, JWT auth over Solana
+wallet signatures, AWS S3 for images, deployed on Render.
 
-### For Workers
+**Frontend** — Next.js 14 (App Router), TypeScript, Tailwind, shadcn/ui, Solana
+Wallet Adapter, Recharts, deployed on Vercel.
 
-1. **Browse Tasks**: Find available jobs matching your skills
-2. **Complete Work**: Submit tasks according to requirements
-3. **Get Paid**: Receive SOL automatically upon verification
-4. **Build Reputation**: Earn ratings for quality work
+**On chain** — Solana devnet. Anchor program in [escrow/](escrow/) (not deployed).
 
-## Tech Stack
+Architecture, conventions, and the phased plan live in [CLAUDE.md](CLAUDE.md).
 
-### Backend
-- **Runtime**: Node.js 22+
-- **Framework**: Express.js
-- **Database**: PostgreSQL with Prisma ORM
-- **Authentication**: JWT + Solana Web3.js
-- **Storage**: AWS S3
-- **Deployment**: Render
-
-### Frontend
-- **Framework**: Next.js 14
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **State Management**: Zustand
-- **Blockchain**: Solana Wallet Adapter
-- **Deployment**: Vercel
-
-### Blockchain
-- **Network**: Solana Devnet (for now)
-- **Wallets**: Phantom, Solflare, and more
-- **Smart Contracts - pending**: Rust-based programs (for better vault and escrow management) 
-
-## Getting Started
+## Getting started
 
 ### Prerequisites
-
 - Node.js 22+
-- PostgreSQL database
-- Solana wallet (Phantom, Solflare, etc.)
-- AWS S3 bucket (for file storage)
+- A PostgreSQL database
+- A Solana wallet (Phantom, Solflare)
+- An AWS S3 bucket
 
-### Installation
-
-1. **Clone the repository**
+### Setup
 
 ```bash
 git clone https://github.com/kingsleycj/dojopay.git
 cd dojopay
-```
 
-2. **Backend Setup**
-
-```bash
+# backend
 cd backend
 npm install
-cp .env.example .env
-# Configure environment variables in .env
+cp .env.example .env      # fill in the values below
+npx prisma migrate dev
 npm run dev
-```
 
-3. **Frontend Setup**
-
-```bash
-cd frontend
+# frontend
+cd ../frontend
 npm install
 cp .env.example .env.local
-# Configure environment variables in .env.local
-npm run dev
+npm run dev               # http://localhost:5174
 ```
 
-### Environment Variables
+### Environment
 
-#### Backend (`.env`)
+Backend `.env` — **the server refuses to start if any of these are missing.**
+There are no fallback secrets.
 
 ```env
 DATABASE_URL=postgresql://...
-RPC_URL=https://api.mainnet-beta.solana.com
-PRIVATE_KEY=your_wallet_private_key
-JWT_SECRET=your_jwt_secret
-S3_BUCKET_NAME=your_s3_bucket
-S3_BUCKET_ACCESS_KEY_ID=...
-S3_BUCKET_SECRET_ACCESS_KEY=...
+JWT_SECRET=<random>
+WORKER_JWT_SECRET=<a different random value>
+RPC_URL=https://api.devnet.solana.com
+PLATFORM_WALLET_ADDRESS=<base58 pubkey>
+PRIVATE_KEY=<base58 secret key for that wallet>
+S3_BUCKET_NAME=
+S3_BUCKET_REGION=us-east-1
+S3_BUCKET_ACCESS_KEY_ID=
+S3_BUCKET_SECRET_ACCESS_KEY=
+FRONTEND_URL=
 ```
 
-#### Frontend (`.env.local`)
+`JWT_SECRET` and `WORKER_JWT_SECRET` must differ — sharing one would let a
+creator token authenticate as a worker.
+
+Frontend `.env.local`:
 
 ```env
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3000
-NEXT_PUBLIC_CLOUDFRONT_URL=https://your-cloudfront-domain.cloudfront.net/
+NEXT_PUBLIC_CLOUDFRONT_URL=https://<dist>.cloudfront.net/
+NEXT_PUBLIC_SOLANA_NETWORK=devnet
+NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS=<same as backend>
 ```
 
-## API Documentation
+### Tests
 
-### Creator Endpoints
+```bash
+cd backend  && npm run test:run   # 76 tests
+cd frontend && npm run test:run   # 33 tests
+cd escrow   && cargo test -p dojopay-escrow   # 7 tests
+```
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/v1/user/signin` | Authenticate with Solana wallet |
-| POST | `/v1/user/task` | Create new task |
-| GET | `/v1/user/tasks` | List created tasks |
-| GET | `/v1/user/analytics` | View task statistics |
+A pre-commit hook runs both JS suites.
 
-### Worker Endpoints
+## API
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/v1/worker/signin` | Authenticate worker |
-| GET | `/v1/worker/tasks` | Browse available tasks |
-| POST | `/v1/worker/submit` | Submit completed task |
-| GET | `/v1/worker/earnings` | View payment history |
+Base path `/v1`. All money values cross the wire as **lamport strings**.
+
+### Creator — `/v1/user`
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/signin` | wallet-signature login |
+| GET | `/presignedUrl` | S3 presigned upload |
+| POST | `/task` | verify funding, create task |
+| GET | `/tasks` | list own tasks |
+| GET | `/task?taskId=` | results + vote counts |
+| GET | `/task/:id` | single task |
+| PATCH | `/task/:id` | edit title / expiry |
+| GET | `/dashboard` | analytics |
+| GET | `/earnings` | spend + payout history |
+
+### Worker — `/v1/worker`
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/signin` | wallet-signature login |
+| GET | `/nextTask` | next available task |
+| POST | `/submission` | submit a choice |
+| GET | `/balance` | pending + withdrawn |
+| GET | `/submissions` | submission history |
+| GET | `/payouts` | withdrawal history |
+| GET | `/earnings` | paginated ledger |
+| GET | `/dashboard` | metrics + next task |
+| POST | `/payout` | signed withdrawal |
+
+### Public
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | liveness + DB check |
+| GET | `/v1/public/task/:id` | share-link preview, no auth |
 
 ## Deployment
 
-### Backend (Render)
+**Backend (Render)** — `render.yaml` is checked in. Set the environment
+variables above, then run `npx prisma migrate deploy`.
 
-1. Connect your GitHub repository
-2. Set environment variables
-3. Deploy from `backend` directory
-4. Configure PostgreSQL database
-
-### Frontend (Vercel)
-
-1. Connect your GitHub repository
-2. Set environment variables
-3. Deploy from `frontend` directory
-4. Configure custom domain (optional)
+**Frontend (Vercel)** — deploy from `frontend/`, set the `NEXT_PUBLIC_*`
+variables.
 
 ## Security
 
-- **Non-custodial**: Users control their own SOL wallets
-- **Escrow System**: Payments held until task verification
-- **Rate Limiting**: Protection against API abuse
-- **Input Validation**: All user inputs are sanitized
-- **HTTPS**: Encrypted communication
-- **CORS**: Cross-origin protection
+What is actually implemented:
+
+- **Non-custodial identity.** Users sign a message; DojoPay never sees a private
+  key or a password.
+- **Funding verification.** A task only goes live if a real, successful,
+  correctly-addressed transaction of exactly 0.1 SOL exists on chain, paid by the
+  signed-in creator. Funding signatures are unique, so one payment cannot create
+  two tasks.
+- **Withdrawal authorisation.** Each withdrawal requires a wallet signature over
+  the exact amount and destination, so a captured signature cannot authorise a
+  later or larger withdrawal.
+- **Payout safety.** Balances are debited before broadcast and restored on
+  failure; payout signatures are unique, so a retry cannot double-pay.
+- **Capacity enforcement.** A task cannot accept more submissions than it funded;
+  the check is a conditional update, so concurrent workers cannot both take the
+  last slot.
+- **Rate limiting** on sign-in, task creation, and payout routes.
+- **Input validation** — every request body is parsed with a zod schema.
+- **Separate role secrets** — creator and worker tokens are not interchangeable.
+
+Known limitations:
+
+- **Payouts are custodial.** One key controls all open task funds. This is the
+  problem the escrow program exists to solve.
+- Rate limiting is per-process and will not hold across multiple instances.
+- The escrow program is unaudited and undeployed.
 
 ## Roadmap
 
-### Q4 2025
-- [ ] Multi-task type support
-- [ ] Advanced verification system
-- [ ] Mobile app development
+Tracked in detail in [CLAUDE.md](CLAUDE.md) §7.
 
-### Q1 2026
+- [x] Layered backend, real Postgres migrations, enforced economics
+- [x] Frontend API/auth foundation, shared shell
+- [x] Public share links and referral attribution
+- [x] Escrow program written and building
+- [ ] Escrow deployed, integration-tested, audited
+- [ ] USDC and fiat off-ramp (after escrow)
+- [ ] Task types beyond image selection
 - [ ] Reputation system
-- [ ] Escrow smart contracts
-- [ ] API v2 release
-
-### Q2 2026
-- [ ] Real-time updates
-- [ ] Marketplace features
-- [ ] Advanced analytics
-- [ ] Enterprise solutions
 
 ## Contributing
 
-We welcome contributions! Here's how you can help:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Fork and branch (`git checkout -b feature/thing`)
+2. Read [CLAUDE.md](CLAUDE.md) — it explains the layering rules and must be
+   updated alongside behaviour changes
+3. Keep both test suites green (the pre-commit hook enforces this)
+4. Open a pull request
 
 ## Support
 
-- **Documentation**: [Project Wiki](https://github.com/kingsleycj/dojopay/wiki)
 - **Issues**: [GitHub Issues](https://github.com/kingsleycj/dojopay/issues)
-- **Discord**: [Community Server](#)
-
-<!-- ## License
-
-This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details. -->
 
 ---
 
-**Built with ❤️ on Solana**
+**Built on Solana**
