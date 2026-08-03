@@ -82,6 +82,22 @@ export function __setMailer(next: Mailer | null): void {
 // Templates
 // ---------------------------------------------------------------------------
 
+/**
+ * Escape text that is about to be interpolated into an email body.
+ *
+ * Display names and moderation reasons are typed by people. Without this a name
+ * containing `<` produces broken markup at best, and an injected anchor at
+ * worst — in a message that carries this application's name.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function layout(heading: string, body: string, cta?: { url: string; label: string }): string {
   return `<!doctype html>
 <html><body style="margin:0;padding:24px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111827">
@@ -131,6 +147,61 @@ export async function sendPasswordResetEmail(to: string, token: string): Promise
   });
 }
 
+/**
+ * Sent once, the first time an account has an email address it has proven it
+ * controls.
+ *
+ * Deliberately not sent alongside the verification link. Two emails arriving
+ * together is noise, and a "here is how to get started" note is worthless to
+ * someone who has not finished signing up — so this waits for verification and
+ * lands when the account is actually usable. Google signups are verified by
+ * Google, so for them it lands immediately.
+ */
+export async function sendWelcomeEmail(
+  to: string,
+  options: { displayName?: string | null; hasWallet: boolean },
+): Promise<void> {
+  const name = options.displayName?.trim();
+  const greeting = name ? `Welcome, ${escapeHtml(name)}.` : "Welcome to DojoPay.";
+
+  const walletNote = options.hasWallet
+    ? `<p><strong>Your wallet is connected</strong>, so you can withdraw whenever you like.</p>`
+    : `<p><strong>One thing left:</strong> connect a Solana wallet in Settings. You can browse,
+         post and complete tasks without one — but withdrawals need somewhere to send the SOL.</p>`;
+
+  await getMailer().send({
+    to,
+    subject: "Welcome to DojoPay",
+    html: layout(
+      greeting,
+      `<p>DojoPay is a micro-task marketplace that settles in SOL on Solana. There are two
+         sides to it and your account is already both — switch between them any time, no
+         second sign-up.</p>
+       <p style="margin-top:16px"><strong>Earn as a worker.</strong> Pick the best image from a
+         set. Each answer credits your balance the moment it is accepted.</p>
+       <p><strong>Post as a creator.</strong> Top up your vault, choose a budget and how many
+         answers you want, and publish. Unused budget comes back to your vault.</p>
+       ${walletNote}
+       <p style="margin-top:16px;font-size:13px;color:#6b7280">DojoPay currently runs on Solana
+         <strong>devnet</strong>, so the SOL involved is test SOL and not worth real money.</p>`,
+      { url: `${config.mail.appUrl}/worker/dashboard`, label: "Open DojoPay" },
+    ),
+    text:
+      `${name ? `Welcome, ${name}.` : "Welcome to DojoPay."}\n\n` +
+      `DojoPay is a micro-task marketplace that settles in SOL on Solana. Your account is ` +
+      `both a worker and a creator — switch any time.\n\n` +
+      `Earn as a worker: pick the best image from a set; each accepted answer credits your ` +
+      `balance.\n` +
+      `Post as a creator: top up your vault, choose a budget and how many answers you want, ` +
+      `and publish. Unused budget returns to your vault.\n\n` +
+      (options.hasWallet
+        ? `Your wallet is connected, so you can withdraw whenever you like.\n\n`
+        : `One thing left: connect a Solana wallet in Settings before you withdraw.\n\n`) +
+      `DojoPay currently runs on Solana devnet — the SOL involved is test SOL.\n\n` +
+      `${config.mail.appUrl}/worker/dashboard`,
+  });
+}
+
 /** Sent when an admin suspends an account, so the person is not left guessing. */
 export async function sendAccountSuspendedEmail(to: string, reason: string): Promise<void> {
   await getMailer().send({
@@ -139,7 +210,7 @@ export async function sendAccountSuspendedEmail(to: string, reason: string): Pro
     html: layout(
       "Account suspended",
       `<p>Your DojoPay account has been suspended and cannot currently post or complete tasks.</p>
-       <p><strong>Reason:</strong> ${reason}</p>
+       <p><strong>Reason:</strong> ${escapeHtml(reason)}</p>
        <p>Any balance you have already earned is unaffected. Reply to this email if you think this is a mistake.</p>`,
     ),
     text: `Your DojoPay account has been suspended.\n\nReason: ${reason}\n\nYour existing balance is unaffected.`,

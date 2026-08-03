@@ -34,7 +34,7 @@ export interface PayoutResult {
 }
 
 export interface FundingVerification {
-  /** Lamports confirmed as funding the task. */
+  /** Lamports confirmed as having arrived. */
   amountLamports: bigint;
   /** PDA holding the funds, or null when the platform wallet holds them. */
   vaultAddress: string | null;
@@ -44,11 +44,15 @@ export interface PaymentsProvider {
   readonly name: "custodial" | "escrow";
 
   /**
-   * Confirm on chain that a task has been funded, and by whom.
-   * Must reject replays: a signature that already funded a task cannot fund
-   * another.
+   * Confirm on chain that a creator's top-up landed, and for how much.
+   *
+   * Used to be `verifyTaskFunding`, checking a fixed 0.1 SOL per task. Creators
+   * now top a vault up by an amount they choose and fund tasks from it, so the
+   * on-chain step is a deposit and the amount is an output rather than an
+   * assertion. Implementations must reject replays: a signature that has already
+   * been credited cannot be credited again.
    */
-  verifyTaskFunding(signature: string, creatorAddress: string): Promise<FundingVerification>;
+  verifyDeposit(signature: string, depositorAddress: string): Promise<FundingVerification>;
 
   /**
    * Move a worker's earned balance to their wallet.

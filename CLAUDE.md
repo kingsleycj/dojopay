@@ -22,20 +22,49 @@ best of N images); **workers** complete it and earn SOL; workers withdraw to the
 Sign up with **email, Google, or a Solana wallet**. A wallet is required only to
 *withdraw* — see §4. There is also a separate staff **admin** section at `/admin`.
 
-**Network:** devnet. **Money model:** currently custodial (a platform hot wallet holds task
-funds and pays workers out); moving to an on-chain escrow program in Phase 6.
+**Network:** devnet. **Money model:** custodial, but ledgered per account — a platform hot
+wallet holds the SOL and a per-account **vault** records whose it is. Moving to an on-chain
+escrow program in Phase 6.
 
 ### Economics
 
+Creators choose their own numbers. A task commits a **budget** across a chosen number of
+**answers**, and the reward per answer is the budget divided by that count.
+
 | Quantity | Value | Where |
 |---|---|---|
-| Task price | 0.1 SOL (`100_000_000` lamports) | `TASK_PRICE_LAMPORTS` |
-| Max submissions per task | 100 | `MAX_SUBMISSIONS_PER_TASK` |
-| Worker reward per submission | task amount ÷ 100 = 0.001 SOL | derived |
 | Lamports per SOL | `1_000_000_000` | `LAMPORTS_PER_SOL` |
+| Min task budget | 0.01 SOL | `MIN_TASK_BUDGET_LAMPORTS` |
+| Max task budget | 1000 SOL | `MAX_TASK_BUDGET_LAMPORTS` |
+| Answers per task | 5 – 1000 | `MIN/MAX_SUBMISSIONS_PER_TASK` |
+| Min reward per answer | 0.0001 SOL | `MIN_REWARD_PER_SUBMISSION_LAMPORTS` |
+| Min vault top-up | 0.01 SOL | `MIN_DEPOSIT_LAMPORTS` |
+| Min withdrawal | 0.001 SOL | `MIN_WITHDRAWAL_LAMPORTS` |
+| Composer defaults | 0.1 SOL / 100 answers | `TASK_PRICE_LAMPORTS`, `DEFAULT_SUBMISSIONS_PER_TASK` |
 
-A task is **full** (and `done`) once it has `MAX_SUBMISSIONS_PER_TASK` submissions. Until
-Phase 3 this cap was not enforced, which is why the platform wallet could be drained.
+**The arithmetic is exact and it is `planBudget`'s job.** The reward is
+`floor(budget / answers)`, and the task reserves `reward × answers` — *not* the requested
+budget. Reserving the full request would strand up to `answers - 1` lamports in a task that
+can never spend them; leaving the remainder in the vault keeps the invariant
+`reserved == what workers can still claim` exactly true, which is what makes a refund a
+subtraction rather than a reconciliation.
+
+A task is **full** (and `done`) once it has `maxSubmissions` submissions. Until Phase 3 this
+cap was not enforced, which is why the platform wallet could be drained.
+
+### Vaults
+
+Every account has one. `available` is spendable or withdrawable; `reserved` is committed to
+open tasks and is neither. The invariant the vault module exists to hold:
+
+```
+available + reserved  ==  deposited - withdrawn - spent + refunded
+```
+
+Money enters through a verified on-chain deposit, moves `available → reserved` when a task
+is funded, `reserved → spent` as each submission lands, and `reserved → available` when a
+task closes with slots unfilled. Every one of those writes a `VaultEntry` carrying the
+balances it produced, so a statement is reconstructible and a discrepancy is locatable.
 
 ---
 
@@ -62,7 +91,7 @@ Target structure (Phase 1). Each layer may only import from layers below it.
 src/
 ├── index.ts          app assembly + listen; no business logic
 ├── config/           env parsing & validation, economic constants. Imports nothing internal.
-├── lib/              infrastructure clients: prisma, solana connection, s3, logger
+├── lib/              infrastructure clients: prisma, solana connection, storage (R2), mailer, logger
 ├── middleware/       auth, error handler, rate limiting, request logging
 ├── services/         business logic; the only layer that touches prisma or the chain
 ├── controllers/      HTTP request/response only; delegates to services
@@ -86,29 +115,34 @@ app/
 ├── page.tsx        landing (honours ?next, ?ref)
 ├── layout.tsx      mounts WalletProviders → AuthProvider
 ├── auth/           login | register | verify | reset | forgot | callback
-├── settings/       wallet + email linking, profile
-├── creator/        dashboard | tasks | create | task/[taskId] | task/[taskId]/edit | earnings
+├── settings/       profile, wallet, security, notifications, preferences, danger zone
+├── creator/        dashboard | tasks | create | vault | task/[taskId] | …/edit | earnings
 ├── worker/         dashboard | tasks | earnings
 ├── task/[taskId]/  PUBLIC shareable task page — server-rendered, no session
 └── admin/          SEPARATE section: own layout, own provider, noindex
 components/
 ├── ui/             shadcn primitives — do not hand-edit, regenerate
-├── landing/        marketing sections
+├── ui-kit/         APP design system: Page, StatCard, Sol, Button, Skeleton, Toggle, …
+├── landing/        marketing sections (scoped under .dojo)
 ├── auth/           AuthShell, AlternateSignIn
 ├── admin/          AdminChrome, primitives
-├── creator/        creator-only feature components
-├── worker/         worker-only feature components
-└── shared/         AppShell, WalletProviders, ShareButton, PublicTaskView
-hooks/              useWithdrawal, use-mobile
+├── creator/        CreatorDashboard, CreatorTasks, TaskComposer, TaskDetail,
+│                   VaultPanel, CreatorSpending
+├── worker/         WorkerDashboard, WorkerTasks, TaskRunner, WorkerEarnings
+├── settings/       SettingsView
+└── shared/         AppShell, SideNav, ModeSwitcher, WalletProviders, ShareButton,
+                    PublicTaskView
+hooks/              useWithdrawal, useVault, use-mobile
 lib/
 ├── api/            typed client + endpoint functions + wire types
 ├── auth/           AuthProvider, useAuth, RoleGuard, AdminProvider
-└── solana/         cluster config, platform wallet, explorer links
-utils/              pure helpers (lamport/SOL/USD conversion)
+└── solana/         cluster config, platform wallet, economics mirror, explorer links
+utils/              pure helpers (lamport/SOL/USD conversion, CDN base URL)
 ```
 
-Every signed-in page is `<RoleGuard role=…><AppShell …>{content}</AppShell></RoleGuard>` and
-nothing else — the page files are ~12 lines each.
+Every signed-in page is `<RoleGuard role=…><AppShell role=…>{content}</AppShell></RoleGuard>`
+and nothing else — the page files are ~12 lines each. The shell sets `data-mode`, which is
+what drives `--mode-accent` for everything inside it.
 
 **`/admin` is fully separate**: its own layout, its own `AdminProvider`, its own token
 key, and a dark theme so it is never ambiguous which surface you are looking at.
@@ -118,6 +152,9 @@ key, and a dark theme so it is never ambiguous which surface you are looking at.
 - No component reads `localStorage` directly for auth. Use the auth context.
 - There is exactly one place that decides the Solana cluster: `lib/solana/config.ts`.
 - Admin pages use `adminApi`/`useAdmin`; user pages use `api`/`useAuth`. Never mix them.
+- Money is rendered with `<Sol lamports=… />`, never by calling `lamportsToSol` inline —
+  one place handles precision and the unit suffix.
+- Navigation highlighting is derived from `usePathname()`, not passed down as a prop.
 
 ---
 
@@ -131,10 +168,12 @@ Prisma + PostgreSQL. Schema: `backend/prisma/schema.prisma`.
 | `User` | creator *profile* for an account | `account_id` unique |
 | `Worker` | worker *profile* for an account | `account_id` unique |
 | `VerificationToken` | email verify / password reset | only the token **hash** is stored |
-| `Task` | a funded unit of work owned by a `User` | `signature` unique (anti-replay) |
+| `Vault` | one account's balance of platform-held SOL | `account_id` unique |
+| `VaultEntry` | append-only ledger row behind a vault | `signature` unique (deposit/withdrawal idempotency) |
+| `Task` | a funded unit of work owned by a `User` | `signature` unique, now nullable |
 | `Option` | one image choice belonging to a `Task` | — |
 | `Submission` | one worker's answer to one task | unique `[worker_id, task_id]` |
-| `Payouts` | a withdrawal from platform wallet → worker | `signature` unique (idempotency) |
+| `Payouts` | a withdrawal from platform wallet → worker or creator | `signature` unique (idempotency) |
 | `AdminUser` | staff account | separate table, separate secret |
 | `AuditLog` | append-only activity record | never updated or deleted |
 
@@ -149,9 +188,22 @@ Worker balances are lamport `BigInt`s:
 - `referred_by` — wallet address of the worker whose share link brought them in, set once at
   creation so a returning worker cannot be re-attributed.
 
-`Task` additionally carries `status` (`TaskStatus`), `submissionCount` for the capacity check,
-and `vaultAddress`, which is null while a task is funded through the custodial wallet and set
-once the escrow program owns its funds.
+`Task` carries `status` (`TaskStatus`), `submissionCount` for the capacity check, and:
+
+- `rewardPerSubmission` and `maxSubmissions` — **stored, not derived**. They used to be
+  `amount / MAX_SUBMISSIONS_PER_TASK` against a global constant, so changing that constant
+  would silently have rewritten the reward on every task ever created, including ones
+  already paid out.
+- `vaultFunded` — false for tasks created before vaults existed. Those have no reservation
+  to release or refund, and inventing one would drive a creator's balance negative.
+- `refundedAmount` — lamports already returned for unfilled slots. Refunds are computed net
+  of it, which is what makes the expiry sweep idempotent.
+- `signature` — nullable since vaults. A vault-funded task has no transaction of its own;
+  the signature lives on the `DEPOSIT` entry. UNIQUE still holds for rows that have one.
+- `vaultAddress` — null while custodial, set once the escrow program owns the funds.
+
+`Account` also carries preferences (`defaultMode`, `notifyTaskActivity`, `notifyPayouts`,
+`notifyProductNews`) and `welcomeEmailSentAt`, which makes the welcome email send-once.
 
 ---
 
@@ -237,24 +289,39 @@ Base: `/v1`. All money values crossing the wire are **lamport strings**, never n
 | POST | `/change-password` | change password |
 | POST | `/link-email` | add email to a wallet-first account |
 | POST/DELETE | `/link-wallet` | attach or detach the payout wallet |
+| PATCH | `/preferences` | default surface + notification toggles |
 | POST | `/logout` | records the event; tokens are stateless |
 
 ### Creator — `/v1/user`
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/presignedUrl` | S3 presigned POST for image upload |
-| POST | `/task` | verify funding tx, create task |
+| GET | `/presignedUrl` | R2 presigned **PUT** for image upload |
+| POST | `/task` | create a task, reserving its budget from the vault |
 | GET | `/tasks` | list own tasks |
+| GET | `/task-quote` | server-computed budget split, for the composer |
 | GET | `/task?taskId=` | task detail + per-option vote counts |
 | GET | `/task/:id` | single task |
 | PATCH | `/task/:id` | edit title / expiry |
+| POST | `/task/:id/cancel` | close early; unfilled slots return to the vault |
 | GET | `/dashboard` | analytics overview |
 | GET | `/earnings` | spend + payout history |
+
+### Vault — `/v1/vault`
+Mounted on the **account**, not a role profile: the balance a creator funds tasks from is the
+same one they see in settings and withdraw from.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | balances + lifetime totals |
+| GET | `/statement` | paginated ledger |
+| POST | `/deposit` | credit a confirmed on-chain transfer — **requires a linked wallet** |
+| POST | `/withdraw` | signed withdrawal of `available` — **requires a linked wallet** |
 
 ### Worker — `/v1/worker`
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/nextTask` | next unanswered, unexpired, unfilled task |
+| GET | `/tasks` | every task this worker can take, best-paying first |
 | POST | `/submission` | submit a choice, credit `pending_amount` |
 | GET | `/balance` | pending + withdrawn balances |
 | GET | `/submissions` | own submission history |
@@ -347,16 +414,18 @@ RPC_URL=https://api.devnet.solana.com
 PLATFORM_WALLET_ADDRESS=<base58 pubkey>
 PRIVATE_KEY=<base58 secret key for the platform wallet>
 JWT_SECRET=<random>
-WORKER_JWT_SECRET=<different random>
-S3_BUCKET_NAME= S3_BUCKET_REGION= S3_BUCKET_ACCESS_KEY_ID= S3_BUCKET_SECRET_ACCESS_KEY=
+ADMIN_JWT_SECRET=<different random>
+RESEND_API_KEY= MAIL_FROM=
+R2_ACCOUNT_ID= R2_BUCKET_NAME= R2_ACCESS_KEY_ID= R2_SECRET_ACCESS_KEY= R2_PUBLIC_URL=
 FRONTEND_URL=
 ```
 
 Frontend `.env.local`:
 ```
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3000
-NEXT_PUBLIC_CLOUDFRONT_URL=https://<dist>.cloudfront.net/
+NEXT_PUBLIC_CDN_URL=https://<hash>.r2.dev/
 NEXT_PUBLIC_SOLANA_NETWORK=devnet
+NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS=<same as backend>
 ```
 
 The server must refuse to boot if a required variable is missing. No silent fallback secrets.
@@ -497,6 +566,61 @@ Goal: remove the platform's ability to abscond with or lose task funds.
 - [x] `/admin` section: 2FA login, overview, accounts, account detail, tasks, audit log
 - [x] Mode switch replaces the second sign-in
 
+### Phase 12 — Vaults, creator-set budgets, welcome email `DONE`
+Goal: a creator decides what a question is worth, and every lamport on the platform has an
+owner on record.
+- [x] `Vault` + `VaultEntry`: per-account balance and append-only ledger, with
+      `availableAfter` / `reservedAfter` on every row
+- [x] Deposit verification reusing the on-chain checks, keyed on a unique signature so a
+      replay is a no-op rather than free balance
+- [x] `planBudget`: exact lamport arithmetic, floored reward, remainder left in the vault
+- [x] Task creation reserves `reward × answers` in the **same transaction** that writes the
+      task and its options
+- [x] Submission credits the worker and draws down the creator's reservation atomically
+- [x] Refunds: unfilled slots return on expiry, force-close, and creator cancel, computed
+      net of `refundedAmount` so the sweep is idempotent
+- [x] Creator withdrawal, mirroring the worker payout's debit-before-broadcast rule
+- [x] `reserved` is never withdrawable — it is promised to workers who have not answered
+- [x] Negative balances abort their transaction rather than persisting
+- [x] Welcome email, sent once, when an account first has a **verified** address
+- [x] Account preferences: default surface + notification toggles
+
+### Phase 13 — Cloudflare R2 `DONE`
+Goal: move object storage off AWS.
+- [x] `lib/storage.ts` replaces `lib/s3.ts`: `region: "auto"`, custom endpoint,
+      `forcePathStyle: true`
+- [x] Presigned **PUT** instead of presigned POST — R2 does not implement S3's
+      `POST Object` form upload
+- [x] Content type is signed into the URL and must match on the upload
+- [x] `R2_*` env vars, falling back to the old `S3_*` names so a deploy can precede the
+      environment change. Those fallbacks are dead once R2 is configured everywhere.
+- [x] `@aws-sdk/s3-presigned-post` dropped
+
+### Phase 14 — UI overhaul `DONE`
+Goal: one design system, industry-standard loading and motion, a real mode switch.
+- [x] `components/ui-kit/`: `Page`, `PageHeader`, `Section`, `Surface`, `StatCard`,
+      `Sol`, `Pill`, `ProgressBar`, `Button`, `EmptyState`, `Skeleton`, `Toggle`, `Callout`
+- [x] Mode accents via `--mode-accent`, re-pointed by `data-mode` on the shell — no
+      component below needs to know which mode is active
+- [x] Motion utilities (`app-enter`, `app-stagger`, `app-skeleton`, `app-press`) with a
+      full `prefers-reduced-motion` guard, all using `forwards`
+- [x] Skeleton screens shaped like their content, not centred spinners
+- [x] `ModeSwitcher`: client-side navigation and a sliding pill, replacing a
+      `window.location.href` reload that recompiled the whole wallet adapter tree
+- [x] `SideNav` replaces `CreatorSidebar` + `WorkerSidebar`; active item derived from the
+      pathname rather than an `activeView` prop each page had to remember to pass
+- [x] `TaskComposer`: three-step brief/images/budget with a live server-quoted split
+- [x] `TaskRunner`: next task rides along on the submit response, so answering
+      back-to-back costs one request rather than two
+- [x] Worker task queue — previously workers saw one task at a time with no idea what else
+      was available, which stopped being defensible once rewards varied
+- [x] Settings rebuilt into six sections, with the gaps a signup route leaves surfaced first
+
+### Phase 15 — Follow-ups from the overhaul `TODO`
+- [ ] Integration test: deposit → fund → submit ×N → close → refund → withdraw
+- [ ] Notification preferences are stored but not yet consulted by every sender
+- [ ] `WalletProviders` still mounts at the root layout (see §10)
+
 ### Phase 11 — Follow-ups `TODO`
 - [ ] Admin management UI for creating further admins (currently CLI only)
 - [ ] Session revocation list — logout is currently client-side only
@@ -540,8 +664,20 @@ After Phases 8–10 (branch `feat/accounts-and-admin`):
 | `frontend npm run test:run` | 34 passed |
 | `frontend npx next build` | clean, 26 routes |
 
-Not verified: nothing has been run against a live database, a real RPC endpoint,
-or a validator. No end-to-end run of create → submit → withdraw has happened.
+After Phases 12–14 (branch `feat/vaults-and-ui-overhaul`):
+
+| Check | Result |
+|---|---|
+| `backend  npx tsc --noEmit` | clean |
+| `backend  npm run test:run` | 222 passed |
+| `frontend npx tsc --noEmit` | clean |
+| `frontend npm run test:run` | 39 passed |
+| `frontend npx next build` | clean, 27 routes |
+| migration applied to a throwaway Postgres | clean, including backfill over existing rows |
+
+Not verified: nothing has been run against the production database, a real RPC endpoint, or
+a validator. **No end-to-end run of deposit → fund → submit → refund → withdraw has
+happened.** The R2 upload path has not been exercised against a real bucket.
 
 ---
 
@@ -558,6 +694,13 @@ or a validator. No end-to-end run of create → submit → withdraw has happened
 | 7 | Wallet required to withdraw, not to sign up | "Install a browser extension" is the single biggest drop-off for a new worker. Deferring it to the moment money is actually leaving means people can try the product first. |
 | 8 | Admins cannot move money | Bounds the blast radius of a compromised admin credential to a privacy incident. Balance adjustments and manual payouts stay off-platform deliberately. |
 | 9 | Admin 2FA is mandatory, and admins are CLI-created | Staff tooling reads every user's data; a leaked password alone must not be enough, and self-registration must not exist. |
+| 10 | Root `package.json` is a task runner, not an npm workspace | Keeps Render's `rootDir: backend` and Vercel's `frontend/` builds working exactly as they do today. |
+| 11 | Per-account vaults rather than per-task funding transactions | A creator choosing their own budget cannot also be a fixed-price wallet round-trip per task. A vault makes funding a ledger move, makes refunds possible at all, and records whose SOL is in the platform wallet — which nothing did before. |
+| 12 | Reserve `reward × answers`, not the requested budget | Reserving the request would strand up to `answers - 1` lamports in a task that can never spend them. Leaving the remainder in the vault keeps `reserved == what workers can still claim` exactly true. |
+| 13 | `rewardPerSubmission` and `maxSubmissions` stored on the task | Derived from a global constant, changing that constant would silently rewrite the reward on every task ever created, including ones already paid out. |
+| 14 | Welcome email waits for a verified address | Two emails arriving together is noise, and "here is how DojoPay works" is worthless to someone who has not finished signing up. Google signups are pre-verified, so theirs lands immediately. |
+| 15 | Cloudflare R2 with presigned **PUT** | R2 does not implement S3's `POST Object` form upload. This is the one part of the migration that is not configuration. |
+| 16 | No animation library | The app is already slow to compile in development because the root layout mounts the wallet adapter tree. CSS keyframes and Tailwind cover everything here, at zero additional modules. |
 
 ---
 
@@ -584,14 +727,31 @@ Discovered in the audit of `main`. Each links to the phase that resolves it.
 | 15 | Funding verification ignored `meta.err`, so a transaction that **failed** on chain could fund a task if its balance deltas lined up. | High | 3 | FIXED |
 | 16 | S3 upload keys used `Math.random()`, so two uploads could collide and silently overwrite. | Low | 1 | FIXED |
 | 17 | `dotenv`/`prisma` were devDependencies but needed at runtime; Render's `NODE_ENV=production` skips those. | Medium | 1 | FIXED |
+| 18 | `config.test.ts` asserted on `RESEND_API_KEY` being unset, but dotenv loads `.env` under test too — so the suite passed or failed depending on whose machine ran it. | Low | 12 | FIXED |
+| 19 | `animate-fade-up` / `animate-fade-in` used `animation-fill-mode: both`, which the project's own convention (§10) forbids: content stays permanently invisible anywhere animations are suspended. | Medium | 14 | FIXED |
+| 20 | Creator "total spent" summed `task.amount`, overstating the bill for every task that closed unfilled. | Medium | 12 | FIXED |
+| 21 | `lamportsToSol` had no precision cap, so headline figures rendered nine decimal places. | Low | 14 | FIXED |
+| 22 | Display names and moderation reasons were interpolated into email HTML unescaped. | Low | 12 | FIXED |
 
 ---
 
 ## 10. Conventions
 
 - **TypeScript**, ESM (`"type": "module"`), `.js` extensions on relative imports in backend code.
-- **Money**: lamports as `BigInt` in the DB and services; strings at the API boundary; convert
-  to SOL only for display, via `frontend/utils/convert.ts`.
+- **Money**: lamports as `BigInt` in the DB and services; **digit-only strings** at the API
+  boundary (`lamportString` in `types/types.ts` — `Number` loses precision above 2^53 and
+  JSON has no BigInt); convert to SOL only for display, via `frontend/utils/convert.ts`.
+- **Transactions**: a service that takes a `tx` parameter must type it as `PrismaTx` from
+  `lib/prisma.ts`, not `Prisma.TransactionClient` — the latter describes an *unextended*
+  client, and `prismaClient` carries the retry extension, so the two are structurally
+  incompatible.
+- **The backend compiles with `strict: false`.** Discriminated-union narrowing on an
+  `{ok: true} | {ok: false}` shape does not reliably work under it — prefer a flat result
+  with a nullable rejection field (see `IncomingTransfer`) over a union that will not narrow.
+- **App styling uses the ui-kit.** New signed-in surfaces are assembled from
+  `components/ui-kit/`, and mode-dependent colour comes from `--mode-accent` rather than a
+  literal. Do not reintroduce per-page `bg-white`/`text-gray-900` — the app supports a dark
+  token set and hardcoded greys break it.
 - **Errors**: services throw typed `AppError`s; the error middleware maps them to status codes.
   Controllers do not build error bodies by hand.
 - **Logging**: no bare `console.log` in committed backend code — use `lib/logger`. The audit

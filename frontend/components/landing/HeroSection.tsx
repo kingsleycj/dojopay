@@ -53,9 +53,10 @@ export const HeroSection = ({ onGetStarted, onJoinAsWorker }: HeroSectionProps) 
             className="mt-6 max-w-md text-[1.0625rem] leading-relaxed"
             style={{ color: "var(--paper-dim)" }}
           >
-            Creators fund a task with 0.1 SOL. A hundred people each answer it once and
-            earn 0.001 SOL. Every payment is checked against the chain before it
-            counts — and the books always balance.
+            A creator commits a budget and says how many answers they want. That
+            splits into slots, each worth an exact amount. Every payment is checked
+            against the chain before it counts, unused budget comes back, and the
+            books always balance.
           </p>
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">

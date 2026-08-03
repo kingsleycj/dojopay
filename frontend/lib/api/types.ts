@@ -34,7 +34,80 @@ export interface Account {
   /** False until a wallet is linked; drives the withdrawal prompt. */
   canWithdraw: boolean;
   roles: { creator: boolean; worker: boolean };
+  preferences: AccountPreferences;
   createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export type AccountMode = "CREATOR" | "WORKER";
+
+export interface AccountPreferences {
+  /** Which surface to land on after signing in. */
+  defaultMode: AccountMode;
+  notifyTaskActivity: boolean;
+  notifyPayouts: boolean;
+  notifyProductNews: boolean;
+}
+
+/**
+ * A creator's balance of platform-held SOL.
+ *
+ * `available` is spendable on a task or withdrawable; `reserved` is committed to
+ * tasks still accepting submissions and is neither. `total` is what the account
+ * owns.
+ */
+export interface Vault {
+  available: string;
+  reserved: string;
+  total: string;
+  totalDeposited: string;
+  totalWithdrawn: string;
+  totalSpent: string;
+  /** Zero below the network-fee floor, so the UI never offers an impossible action. */
+  withdrawable: string;
+  minimumDeposit: string;
+  minimumWithdrawal: string;
+  updatedAt: string;
+}
+
+export type VaultEntryType =
+  | "DEPOSIT"
+  | "WITHDRAWAL"
+  | "TASK_FUNDED"
+  | "TASK_REFUND"
+  | "REWARD_RELEASED";
+
+export type VaultEntryStatus = "PENDING" | "SUCCESS" | "FAILED";
+
+export interface VaultEntry {
+  id: number;
+  type: VaultEntryType;
+  status: VaultEntryStatus;
+  amount: string;
+  availableAfter: string;
+  reservedAfter: string;
+  signature: string | null;
+  taskId: number | null;
+  taskTitle: string | null;
+  description: string | null;
+  createdAt: string;
+  /** Whether this changed what the account owns, or only moved it internally. */
+  direction: "in" | "out" | "internal";
+}
+
+export interface VaultStatement {
+  vault: Vault;
+  entries: VaultEntry[];
+  pagination: Pagination;
+}
+
+/** Server-computed budget arithmetic, so the composer never guesses at rounding. */
+export interface BudgetQuote {
+  budget: string;
+  committed: string;
+  remainder: string;
+  rewardPerSubmission: string;
+  maxSubmissions: number;
 }
 
 export interface AuthResponse {
@@ -173,9 +246,15 @@ export interface CreatorTask {
   id: number;
   title: string;
   amount: string;
+  rewardPerSubmission: string;
   status: TaskStatus;
   totalSubmissions: number;
   maxSubmissions: number;
+  spotsRemaining: number;
+  /** Still committed to workers who have not answered yet. */
+  reservedRemaining: string;
+  spent: string;
+  refundedAmount: string;
   createdAt: string;
   expiresAt: string | null;
   options: TaskOption[];
@@ -190,6 +269,7 @@ export interface WorkerTask {
   createdAt: string;
   totalSubmissions: number;
   maxSubmissions: number;
+  spotsRemaining: number;
   options: TaskOption[];
 }
 
@@ -242,6 +322,8 @@ export interface WorkerEarnings {
 export interface WorkerDashboard {
   metrics: {
     availableTasks: number;
+    /** What clearing the whole queue would pay. */
+    availableValue: string;
     completedTasks: number;
     pendingEarnings: string;
     totalEarned: string;
@@ -255,6 +337,7 @@ export interface WorkerDashboard {
     expiresAt: string | null;
   }>;
   nextTask: WorkerTask | null;
+  queue: WorkerTask[];
 }
 
 export interface CreatorDashboard {
@@ -262,6 +345,8 @@ export interface CreatorDashboard {
     totalTasks: number;
     totalSubmissions: number;
     totalSpent: string;
+    totalCommitted: string;
+    totalRefunded: string;
     totalPayouts: string;
     completedTasks: number;
     pendingTasks: number;
@@ -276,7 +361,13 @@ export interface CreatorDashboard {
     tasksCreated: number;
     submissionsReceived: number;
   }>;
-  monthlyStats: Array<{ month: string; tasksCreated: number; submissionsReceived: number }>;
+  monthlyStats: Array<{
+    month: string;
+    tasksCreated: number;
+    submissionsReceived: number;
+    capacity: number;
+  }>;
+  vault: Vault | null;
   completionTrend: Array<{ period: string; completionRate: number }>;
   recentActivity: Array<{
     id: number;
@@ -285,7 +376,9 @@ export interface CreatorDashboard {
     createdAt: string;
     expiresAt: string | null;
     amount: string;
+    rewardPerSubmission: string;
     submissions: number;
+    maxSubmissions: number;
   }>;
 }
 
@@ -322,8 +415,13 @@ export interface TaskResults {
     title: string;
     status: TaskStatus;
     amount: string;
+    rewardPerSubmission: string;
     totalSubmissions: number;
     maxSubmissions: number;
+    spotsRemaining: number;
+    spent: string;
+    refundedAmount: string;
+    vaultFunded: boolean;
     createdAt: string;
     expiresAt: string | null;
   };

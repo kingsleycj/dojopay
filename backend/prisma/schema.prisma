@@ -30,6 +30,13 @@ enum AuthProvider {
   WALLET
 }
 
+/// Which surface an account prefers. Not a role — one person can do both, and
+/// switching is a view change rather than a second sign-in.
+enum AccountMode {
+  CREATOR
+  WORKER
+}
+
 /// One human, one row.
 ///
 /// Credentials live here, not on the role profiles, so a person who both posts
@@ -40,39 +47,60 @@ model Account {
   id Int @id @default(autoincrement())
 
   /// Null for wallet-first signups until they link an email in settings.
-  email         String?   @unique
-  emailVerified Boolean   @default(false)
+  email         String? @unique
+  emailVerified Boolean @default(false)
   /// Argon2id hash. Null for Google-only or wallet-only accounts.
   passwordHash  String?
-  googleId      String?   @unique
+  googleId      String? @unique
 
   displayName String?
   avatarUrl   String?
 
   /// Proven by an ed25519 signature, never simply asserted. Null until linked —
   /// and a worker cannot withdraw without it.
-  walletAddress   String?   @unique
-  walletLinkedAt  DateTime?
+  walletAddress  String?   @unique
+  walletLinkedAt DateTime?
 
   /// How this account first signed up. Kept for funnel analysis; an account can
   /// accumulate more methods over time.
   signupProvider AuthProvider @default(EMAIL)
 
-  status           AccountStatus @default(ACTIVE)
-  statusReason     String?
-  statusChangedAt  DateTime?
+  status          AccountStatus @default(ACTIVE)
+  statusReason    String?
+  statusChangedAt DateTime?
 
   /// Wallet address of whoever's share link brought them in.
   referredBy String?
+
+  /// Set once, the first time a welcome email is actually sent. Wallet-first
+  /// accounts have no address to send to, so this stays null until they link
+  /// and verify one — which is also what makes the send idempotent.
+  welcomeEmailSentAt DateTime?
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // -- Preferences -----------------------------------------------------------
+
+  /// Which surface to land on after signing in. A person can be both, so this
+  /// is a preference rather than a role.
+  defaultMode AccountMode @default(WORKER)
+
+  /// Transactional-but-optional email. Security mail (verification, password
+  /// reset, suspension) is deliberately not switchable — it is not marketing,
+  /// and losing it means losing access to the account.
+  notifyTaskActivity Boolean @default(true)
+  notifyPayouts      Boolean @default(true)
+  notifyProductNews  Boolean @default(false)
+
   /// Role profiles. Created on demand the first time the account acts in that
   /// role, so signing up does not force a choice.
   creatorProfile User?
   workerProfile  Worker?
+
+  /// Per-account balance of platform-held SOL. Created lazily like the profiles.
+  vault Vault?
 
   tokens    VerificationToken[]
   auditLogs AuditLog[]
@@ -138,17 +166,116 @@ model Worker {
 }
 
 // ---------------------------------------------------------------------------
+// Vaults
+// ---------------------------------------------------------------------------
+
+/// A creator's balance of platform-held SOL.
+///
+/// Money arrives in one place — the platform wallet — but it is never pooled
+/// conceptually: every lamport in it belongs to exactly one account, and this
+/// row is the record of whose. A creator tops the vault up once, then funds any
+/// number of tasks from it without another wallet round-trip.
+///
+/// `available + reserved` is what the account owns. `reserved` is committed to
+/// open tasks and can be neither spent elsewhere nor withdrawn; it converts to
+/// worker earnings as submissions land, or returns to `available` when a task
+/// ends with slots unfilled.
+model Vault {
+  id         Int     @id @default(autoincrement())
+  account_id Int     @unique
+  account    Account @relation(fields: [account_id], references: [id], onDelete: Cascade)
+
+  /// Unreserved lamports: spendable on a new task, or withdrawable.
+  available BigInt @default(0)
+  /// Lamports committed to tasks that are still accepting submissions.
+  reserved  BigInt @default(0)
+
+  /// Lifetime totals, for the statement header. Derived from `entries`, stored
+  /// so the common read does not have to aggregate the whole ledger.
+  totalDeposited BigInt @default(0)
+  totalWithdrawn BigInt @default(0)
+  totalSpent     BigInt @default(0)
+
+  entries VaultEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum VaultEntryType {
+  /// SOL moved from the creator's wallet into the platform wallet.
+  DEPOSIT
+  /// SOL moved back out to the creator's wallet.
+  WITHDRAWAL
+  /// available → reserved, when a task is funded.
+  TASK_FUNDED
+  /// reserved → available, when a task ends with slots unfilled.
+  TASK_REFUND
+  /// reserved → spent, when a worker's submission is accepted.
+  REWARD_RELEASED
+}
+
+enum VaultEntryStatus {
+  /// On-chain leg submitted, not yet confirmed. Only DEPOSIT/WITHDRAWAL use it.
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+/// Append-only ledger behind a `Vault`.
+///
+/// Every balance change writes one row, carrying the balances it produced. That
+/// makes a statement reconstructible and a discrepancy locatable — the previous
+/// design could only ever show the current number.
+model VaultEntry {
+  id       Int   @id @default(autoincrement())
+  vault_id Int
+  vault    Vault @relation(fields: [vault_id], references: [id], onDelete: Cascade)
+
+  type   VaultEntryType
+  status VaultEntryStatus @default(SUCCESS)
+
+  /// Always positive. Direction is carried by `type`, so a sign convention
+  /// cannot be misread at a call site.
+  amount BigInt
+
+  /// Balances immediately after this entry was applied.
+  availableAfter BigInt
+  reservedAfter  BigInt
+
+  /// On-chain signature for DEPOSIT and WITHDRAWAL. UNIQUE is load-bearing in
+  /// exactly the way `Task.signature` was: it makes a replayed deposit — or a
+  /// retried withdrawal — impossible to double-count.
+  signature String? @unique
+
+  task_id Int?
+  task    Task? @relation(fields: [task_id], references: [id], onDelete: SetNull)
+
+  /// Human-readable line for the statement, e.g. the task title.
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vault_id, createdAt])
+  @@index([type, createdAt])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
 
 enum TaskStatus {
   /// Accepting submissions.
   OPEN
-  /// Reached MAX_SUBMISSIONS_PER_TASK; fully subscribed.
+  /// Reached `maxSubmissions`; fully subscribed.
   COMPLETED
   /// Passed expiresAt with capacity to spare.
   EXPIRED
-  /// Creator reclaimed the unspent balance.
+  /// Closed early by the creator. Any unfilled slots were released back to
+  /// their vault — as they also are on EXPIRED and FORCE_CLOSED, so this status
+  /// records *who ended it*, while `refundedAmount` records what came back.
   REFUNDED
   /// Closed by an admin for abuse. Terminal; distinct from COMPLETED so the
   /// difference is visible in reporting.
@@ -161,12 +288,34 @@ model Task {
   user_id Int
   user    User   @relation(fields: [user_id], references: [id])
 
-  /// Funding transaction signature. UNIQUE is load-bearing: without it one
-  /// 0.1 SOL payment could be replayed to mint unlimited tasks.
-  signature String @unique
+  /// Funding transaction signature, for tasks paid for by a direct transfer.
+  ///
+  /// Nullable since vaults: a vault-funded task has no transaction of its own —
+  /// the signature lives on the `DEPOSIT` entry that put the SOL there. UNIQUE
+  /// still holds for the rows that have one (Postgres permits many NULLs), so
+  /// the anti-replay guarantee is unchanged for legacy tasks.
+  signature String? @unique
 
-  /// Total lamports funded for this task.
+  /// Total lamports committed to this task.
   amount BigInt
+
+  /// Lamports a worker earns per accepted submission.
+  ///
+  /// Stored rather than derived. It used to be `amount / MAX_SUBMISSIONS`, a
+  /// global constant, so changing that constant would silently have rewritten
+  /// the reward on every task ever created — including ones already paid out.
+  rewardPerSubmission BigInt
+
+  /// How many submissions this task accepts. Chosen per task by the creator;
+  /// `amount` is reserved to cover exactly this many rewards.
+  maxSubmissions Int @default(100)
+
+  /// True when funding came from the creator's vault. Tasks created before
+  /// vaults existed are false and have no reservation to release or refund.
+  vaultFunded Boolean @default(false)
+
+  /// Lamports returned to the creator's vault for slots that were never filled.
+  refundedAmount BigInt @default(0)
 
   /// Retained for backwards compatibility with existing reads; derived from
   /// `status`. Prefer `status` in new code.
@@ -185,8 +334,9 @@ model Task {
   /// Populated when an admin force-closes the task.
   moderationReason String?
 
-  options     Option[]
-  submissions Submission[]
+  options      Option[]
+  submissions  Submission[]
+  vaultEntries VaultEntry[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

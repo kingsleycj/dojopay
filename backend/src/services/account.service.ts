@@ -1,7 +1,14 @@
 import nacl from "tweetnacl";
 import jwt from "jsonwebtoken";
 import { PublicKey } from "@solana/web3.js";
-import { AccountStatus, AuthProvider, TokenType, type Account } from "@prisma/client";
+import {
+  AccountStatus,
+  AuthProvider,
+  TokenType,
+  type Account,
+  type AccountMode,
+} from "@prisma/client";
+import type { UpdatePreferencesInput } from "../types/types.js";
 import { config } from "../config/index.js";
 import { prismaClient } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
@@ -14,7 +21,7 @@ import {
   validatePasswordStrength,
   verifyPassword,
 } from "../lib/password.js";
-import { sendPasswordResetEmail, sendVerificationEmail } from "../lib/mailer.js";
+import { sendPasswordResetEmail, sendVerificationEmail, sendWelcomeEmail } from "../lib/mailer.js";
 import { AuditAction, auditAccount, type AuditContext } from "./audit.service.js";
 import { badRequest, conflict, forbidden, notFound, unauthorized } from "../utils/errors.js";
 
@@ -91,7 +98,14 @@ export function toPublicAccount(
       creator: Boolean(account.creatorProfile),
       worker: Boolean(account.workerProfile),
     },
+    preferences: {
+      defaultMode: account.defaultMode,
+      notifyTaskActivity: account.notifyTaskActivity,
+      notifyPayouts: account.notifyPayouts,
+      notifyProductNews: account.notifyProductNews,
+    },
     createdAt: account.createdAt.toISOString(),
+    lastLoginAt: account.lastLoginAt?.toISOString() ?? null,
   };
 }
 
@@ -105,6 +119,46 @@ async function loadAccount(accountId: number) {
 }
 
 export { loadAccount as getAccount };
+
+/**
+ * Send the welcome email, at most once per account, ever.
+ *
+ * Called from every path that can leave an account with a *verified* address:
+ * a Google signup (Google has already verified it), completing the email
+ * verification link, and completing a password reset. Gated on a conditional
+ * `updateMany` rather than a read-then-write so two concurrent verifications
+ * cannot both win the race and send twice.
+ *
+ * Failure is swallowed, and the claim is *not* rolled back: for a welcome note
+ * a miss is better than a duplicate, and nothing about it should be able to fail
+ * the action that triggered it — verifying an address must succeed even if the
+ * mail provider is down.
+ */
+async function sendWelcomeEmailOnce(accountId: number): Promise<void> {
+  try {
+    const claimed = await prismaClient.account.updateMany({
+      where: { id: accountId, welcomeEmailSentAt: null, email: { not: null } },
+      data: { welcomeEmailSentAt: new Date() },
+    });
+    if (claimed.count === 0) return;
+
+    const account = await prismaClient.account.findUnique({
+      where: { id: accountId },
+      select: { email: true, displayName: true, walletAddress: true },
+    });
+    if (!account?.email) return;
+
+    await sendWelcomeEmail(account.email, {
+      displayName: account.displayName,
+      hasWallet: Boolean(account.walletAddress),
+    });
+  } catch (error) {
+    logger.error("Welcome email failed", {
+      accountId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Email + password
@@ -296,6 +350,9 @@ export async function upsertGoogleAccount(input: {
     metadata: { provider: "GOOGLE" },
     context: input.context,
   });
+
+  // Google has already verified the address, so there is no link to wait for.
+  await sendWelcomeEmailOnce(account.id);
 
   return { account: toPublicAccount(account), ...issueToken(account.id), isNewAccount: true };
 }
@@ -611,6 +668,10 @@ export async function verifyEmail(token: string, context?: AuditContext) {
     context,
   });
 
+  // The account is now genuinely usable, which is the moment a "here is how
+  // DojoPay works" note is worth reading.
+  await sendWelcomeEmailOnce(record.account_id);
+
   return { message: "Email verified" };
 }
 
@@ -748,6 +809,42 @@ export async function updateProfile(
     entityId: accountId,
     metadata: { displayName: input.displayName },
     context: input.context,
+  });
+
+  return toPublicAccount(updated);
+}
+
+/**
+ * Update notification and default-mode preferences.
+ *
+ * Only the keys present in `input` are written, so a client that knows about
+ * three toggles cannot silently reset a fourth one it has never heard of.
+ */
+export async function updatePreferences(
+  accountId: number,
+  input: UpdatePreferencesInput,
+  context?: AuditContext,
+) {
+  const updated = await prismaClient.account.update({
+    where: { id: accountId },
+    data: {
+      ...(input.defaultMode === undefined ? {} : { defaultMode: input.defaultMode as AccountMode }),
+      ...(input.notifyTaskActivity === undefined
+        ? {}
+        : { notifyTaskActivity: input.notifyTaskActivity }),
+      ...(input.notifyPayouts === undefined ? {} : { notifyPayouts: input.notifyPayouts }),
+      ...(input.notifyProductNews === undefined
+        ? {}
+        : { notifyProductNews: input.notifyProductNews }),
+    },
+    include: { creatorProfile: true, workerProfile: true },
+  });
+
+  await auditAccount(accountId, AuditAction.PREFERENCES_UPDATED, {
+    entityType: "account",
+    entityId: accountId,
+    metadata: { ...input },
+    context,
   });
 
   return toPublicAccount(updated);

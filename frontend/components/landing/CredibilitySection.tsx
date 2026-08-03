@@ -22,18 +22,25 @@ interface Guarantee {
 const GUARANTEES: Guarantee[] = [
   {
     claim: "A task can never pay out more than it was funded for",
-    mechanism: "The 100-slot cap is enforced when a submission is written, not when it is read.",
+    mechanism:
+      "The slot cap is enforced when a submission is written, not when it is read, and the budget is reserved before the task exists.",
     prevents: "Two workers racing for the last slot and both getting paid.",
   },
   {
-    claim: "One payment funds exactly one task",
-    mechanism: "A funding transaction's signature can only ever be used once.",
-    prevents: "Replaying a single 0.1 SOL transfer to mint unlimited tasks.",
+    claim: "One transfer is credited exactly once",
+    mechanism: "A deposit's transaction signature can only ever be recorded against one ledger entry.",
+    prevents: "Replaying a single transfer to mint balance out of nothing.",
   },
   {
     claim: "A failed transfer cannot fund anything",
-    mechanism: "Funding checks the transaction actually succeeded on chain, not just that it exists.",
+    mechanism: "Crediting checks the transaction actually succeeded on chain, not just that it exists.",
     prevents: "A reverted transaction being counted as payment.",
+  },
+  {
+    claim: "Budget nobody answered comes back to you",
+    mechanism:
+      "Unfilled slots are released to the creator's vault when a task expires or is closed, netted against what has already been returned.",
+    prevents: "Committing to a question nobody answers and never seeing the SOL again.",
   },
   {
     claim: "A retried withdrawal cannot pay twice",

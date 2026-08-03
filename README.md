@@ -25,22 +25,36 @@ complete them, and workers get paid in SOL to their own wallet.
 ## What it does
 
 The current task type is **image selection**: a creator uploads a set of images
-and asks workers to pick the best one. Each task is funded with **0.1 SOL** and
-accepts **100 submissions**, so each worker earns **0.001 SOL**. A task closes
-automatically once it is full.
+and asks workers to pick the best one.
+
+**Creators choose their own economics.** You top up a **vault** — a per-account
+balance of platform-held SOL — then fund each task with a budget and a number of
+answers you want. The reward per answer is the budget divided by that count, and
+exactly `reward × answers` is reserved against your vault. Slots nobody answers
+are released back to you when the task closes.
 
 ### For creators
-- Create tasks, funded on chain before the task goes live
+- A vault: top up once, fund any number of tasks with no further wallet approvals
+- Choose a budget and answer count per task; the server quotes the exact split
+  before you commit
+- Close a task early and reclaim every unanswered slot
+- Full statement: every deposit, reservation, reward paid, refund and withdrawal
 - Watch results and per-option vote counts as submissions arrive
 - Share a task with a public link that works for people who have no account yet
 - Analytics computed from real timestamps
 
 ### For workers
 - Sign up with an email, Google, or a wallet — no wallet needed to start
-- Browse available tasks, one at a time
+- Browse every task you can take, best-paying first, with the reward shown before
+  you start
 - Get credited immediately on submission
 - Withdraw the accumulated balance to your own wallet, authorised by a wallet
   signature over the exact amount and destination
+
+### One account, both sides
+There is no separate creator and worker sign-up. The same account can do both and
+switches between them in the app; profiles are created the first time you act in
+each role.
 
 ### Not yet built
 Listed here because earlier versions of this README claimed them:
@@ -50,14 +64,24 @@ mobile app.
 
 ## How it works
 
-**Creator:** connect wallet → sign in → upload images → send 0.1 SOL to the
-platform wallet → the backend verifies that exact transaction on chain (correct
-amount, correct recipient, correct payer, and that it did not fail) → the task
-goes live. Each funding signature can only ever create one task.
+**Creator:** sign in → connect a wallet → transfer SOL to the platform wallet →
+the backend verifies that transaction on chain (it succeeded, it credited the
+platform wallet, and the payer is your linked wallet) and credits your vault.
+Each transaction signature can only ever be credited once.
 
-**Worker:** connect wallet → sign in → open a task → pick an option → balance is
-credited inside a database transaction that also claims one of the task's 100
-slots → withdraw when ready.
+Then, per task: upload images → choose a budget and how many answers you want →
+publish. The budget moves from `available` to `reserved` in the same transaction
+that creates the task, so a task can never exist without its funding, and funding
+can never be taken for a task that failed to create.
+
+**Worker:** sign in → open a task → pick an option → your balance is credited
+inside a database transaction that also claims one of the task's slots *and*
+draws the same amount out of the creator's reservation → withdraw when ready.
+
+**Refunds:** when a task expires, is force-closed, or is closed early by its
+creator, every unfilled slot is released back to the creator's vault. The amount
+owed is computed net of what has already been returned, so running the sweep
+twice cannot pay twice.
 
 **Withdrawal:** the worker signs `Withdraw <lamports> to <address>`. The backend
 verifies the signature, debits the balance *before* broadcasting, sends the SOL,
@@ -67,7 +91,7 @@ transfer fails.
 ## Tech stack
 
 **Backend** — Node 22, Express 5, PostgreSQL via Prisma, JWT auth over Solana
-wallet signatures, AWS S3 for images, deployed on Render.
+wallet signatures, Cloudflare R2 for images, deployed on Render.
 
 **Frontend** — Next.js 14 (App Router), TypeScript, Tailwind, shadcn/ui, Solana
 Wallet Adapter, Recharts, deployed on Vercel.
@@ -82,7 +106,7 @@ Architecture, conventions, and the phased plan live in [CLAUDE.md](CLAUDE.md).
 - Node.js 22+
 - A PostgreSQL database
 - A Solana wallet (Phantom, Solflare)
-- An AWS S3 bucket
+- A Cloudflare R2 bucket
 
 ### Setup
 
@@ -131,10 +155,11 @@ GOOGLE_CLIENT_SECRET=
 RPC_URL=https://api.devnet.solana.com
 PLATFORM_WALLET_ADDRESS=<base58 pubkey>
 PRIVATE_KEY=<base58 secret key for that wallet>
-S3_BUCKET_NAME=
-S3_BUCKET_REGION=us-east-1
-S3_BUCKET_ACCESS_KEY_ID=
-S3_BUCKET_SECRET_ACCESS_KEY=
+R2_ACCOUNT_ID=               # Cloudflare R2 — endpoint is derived from this
+R2_BUCKET_NAME=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_PUBLIC_URL=               # r2.dev subdomain or custom domain
 FRONTEND_URL=http://localhost:5174
 ```
 
@@ -150,7 +175,7 @@ Frontend `.env.local`:
 
 ```env
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3000
-NEXT_PUBLIC_CLOUDFRONT_URL=https://<dist>.cloudfront.net/
+NEXT_PUBLIC_CDN_URL=https://<hash>.r2.dev/       # must match backend R2_PUBLIC_URL
 NEXT_PUBLIC_SOLANA_NETWORK=devnet
 NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS=<same as backend>
 ```
@@ -158,7 +183,7 @@ NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS=<same as backend>
 ### Tests
 
 ```bash
-npm run test            # backend (172) + frontend (34)
+npm run test            # backend (222) + frontend (39)
 npm run test:escrow     # on-chain program logic (7)
 ```
 
@@ -181,19 +206,30 @@ Base path `/v1`. All money values cross the wire as **lamport strings**.
 ### Creator — `/v1/user`
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/presignedUrl` | S3 presigned upload |
-| POST | `/task` | verify funding, create task |
+| GET | `/presignedUrl` | R2 presigned PUT upload |
+| POST | `/task` | create a task, funded from the vault |
 | GET | `/tasks` | list own tasks |
+| GET | `/task-quote` | preview the budget split before committing |
 | GET | `/task?taskId=` | results + vote counts |
 | GET | `/task/:id` | single task |
 | PATCH | `/task/:id` | edit title / expiry |
+| POST | `/task/:id/cancel` | close early, refund unfilled slots |
 | GET | `/dashboard` | analytics |
 | GET | `/earnings` | spend + payout history |
+
+### Vault — `/v1/vault`
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | balances: available, reserved, lifetime totals |
+| GET | `/statement` | paginated ledger of every movement |
+| POST | `/deposit` | credit a confirmed on-chain transfer |
+| POST | `/withdraw` | signed withdrawal of the available balance |
 
 ### Worker — `/v1/worker`
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/nextTask` | next available task |
+| GET | `/tasks` | every task this worker can take, best-paying first |
 | POST | `/submission` | submit a choice |
 | GET | `/balance` | pending + withdrawn |
 | GET | `/submissions` | submission history |
@@ -232,10 +268,13 @@ What is actually implemented:
   move money, adjust balances, or impersonate.
 - **Append-only audit log** of every account, admin, and system action — including
   when an admin views someone's record.
-- **Funding verification.** A task only goes live if a real, successful,
-  correctly-addressed transaction of exactly 0.1 SOL exists on chain, paid by the
-  signed-in creator. Funding signatures are unique, so one payment cannot create
-  two tasks.
+- **Deposit verification.** A vault is only credited when a real, successful,
+  correctly-addressed transaction exists on chain, paid by the account's own
+  linked wallet. Deposit signatures are unique, so one transfer cannot be
+  credited twice.
+- **Vault accounting.** Every balance change writes an append-only ledger entry
+  carrying the balances it produced, and a change that would make a balance
+  negative aborts its transaction rather than persisting.
 - **Withdrawal authorisation.** Each withdrawal requires a wallet signature over
   the exact amount and destination, so a captured signature cannot authorise a
   later or larger withdrawal.
@@ -243,10 +282,14 @@ What is actually implemented:
   failure; payout signatures are unique, so a retry cannot double-pay.
 - **Capacity enforcement.** A task cannot accept more submissions than it funded;
   the check is a conditional update, so concurrent workers cannot both take the
-  last slot.
+  last slot. Reserving the budget and creating the task are one transaction, and
+  crediting a worker and drawing down the creator's reservation are another — so
+  what workers are owed and what creators have committed cannot drift apart.
+- **Reserved funds are not withdrawable.** SOL committed to an open task cannot
+  be pulled back out from under the workers who have not answered yet.
 - **Rate limiting** on sign-in, task creation, and payout routes.
-- **Input validation** — every request body is parsed with a zod schema.
-- **Separate role secrets** — creator and worker tokens are not interchangeable.
+- **Input validation** — every request body is parsed with a zod schema, and
+  lamport amounts cross the wire as digit-only strings rather than numbers.
 
 Known limitations:
 
@@ -254,6 +297,8 @@ Known limitations:
   problem the escrow program exists to solve.
 - Rate limiting is per-process and will not hold across multiple instances.
 - The escrow program is unaudited and undeployed.
+- Signing out clears the device only; there is no server-side session revocation
+  list, so a token stays valid until it expires.
 
 ## Roadmap
 
@@ -262,6 +307,7 @@ Tracked in detail in [CLAUDE.md](CLAUDE.md) §7.
 - [x] Layered backend, real Postgres migrations, enforced economics
 - [x] Frontend API/auth foundation, shared shell
 - [x] Public share links and referral attribution
+- [x] Per-creator vaults, creator-set budgets, and automatic refunds
 - [x] Escrow program written and building
 - [ ] Escrow deployed, integration-tested, audited
 - [ ] USDC and fiat off-ramp (after escrow)

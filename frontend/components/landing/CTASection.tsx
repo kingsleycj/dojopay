@@ -27,8 +27,9 @@ export const CTASection = ({ onGetStarted, onJoinAsWorker }: CTASectionProps) =>
         </h2>
 
         <p className="mt-5 max-w-xl text-[1.0625rem] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
-          Earning takes an email and about thirty seconds. Posting a task takes 0.1 SOL on
-          devnet and a wallet to fund it from.
+          Earning takes an email and about thirty seconds. Posting a task takes a wallet,
+          some devnet SOL in your vault, and a decision about how much a question is worth
+          to you.
         </p>
 
         <div className="mt-9 flex flex-col gap-3 sm:flex-row">

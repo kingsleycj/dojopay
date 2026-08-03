@@ -4,6 +4,7 @@ import { config } from "../config/index.js";
 import * as accounts from "../services/account.service.js";
 import { auditAccount, auditContextFrom, AuditAction } from "../services/audit.service.js";
 import * as schemas from "../types/auth.types.js";
+import { updatePreferencesInput } from "../types/types.js";
 import { unauthorized } from "../utils/errors.js";
 
 /**
@@ -115,6 +116,12 @@ export async function updateProfile(req: Request, res: Response) {
     ...input,
     context: auditContextFrom(req),
   });
+  res.json({ account });
+}
+
+export async function updatePreferences(req: Request, res: Response) {
+  const input = updatePreferencesInput.parse(req.body);
+  const account = await accounts.updatePreferences(accountId(req), input, auditContextFrom(req));
   res.json({ account });
 }
 

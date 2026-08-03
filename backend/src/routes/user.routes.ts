@@ -21,6 +21,16 @@ router.get("/tasks", asyncHandler(controller.listTasks));
 router.get("/dashboard", asyncHandler(controller.dashboard));
 router.get("/earnings", asyncHandler(controller.earnings));
 
+/**
+ * Budget arithmetic, computed server-side.
+ *
+ * The composer calls this as the creator adjusts budget and slot count, so the
+ * reward shown while deciding is the reward the server will actually reserve —
+ * rather than the frontend reimplementing the rounding and the two disagreeing
+ * at the moment of publishing.
+ */
+router.get("/task-quote", asyncHandler(controller.budgetQuote));
+
 // `/task?taskId=` must be declared before `/task/:id`, or Express matches the
 // parameterised route first and `taskId` is silently ignored.
 router.get("/task", asyncHandler(controller.taskResults));
@@ -30,5 +40,8 @@ router.get("/task/:id", asyncHandler(controller.getTask));
 // it. Both share one handler rather than being byte-identical duplicates.
 router.patch("/task/:id", asyncHandler(controller.updateTask));
 router.put("/task/:id", asyncHandler(controller.updateTask));
+
+/** Close a task early and return its unfilled slots to the creator's vault. */
+router.post("/task/:id/cancel", asyncHandler(controller.cancelTask));
 
 export default router;

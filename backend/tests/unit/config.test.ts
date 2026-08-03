@@ -1,8 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  DEFAULT_SUBMISSIONS_PER_TASK,
   MAX_SUBMISSIONS_PER_TASK,
+  MAX_TASK_BUDGET_LAMPORTS,
+  MIN_DEPOSIT_LAMPORTS,
+  MIN_REWARD_PER_SUBMISSION_LAMPORTS,
+  MIN_SUBMISSIONS_PER_TASK,
+  MIN_TASK_BUDGET_LAMPORTS,
   MIN_WITHDRAWAL_LAMPORTS,
-  REWARD_PER_SUBMISSION_LAMPORTS,
   TASK_PRICE_LAMPORTS,
   assertConfigValid,
   config,
@@ -70,10 +75,35 @@ describe("degradation instead of failure", () => {
     });
   });
 
+  /**
+   * The warning must be driven by the config value, not by whether the machine
+   * running the suite happens to have a key in its `.env` — dotenv loads that
+   * file under test too, so this previously passed or failed depending on who
+   * ran it.
+   */
   it("warns rather than throws when email is unconfigured", () => {
-    // No RESEND_API_KEY is set under test.
-    expect(() => assertConfigValid()).not.toThrow();
-    expect(assertConfigValid().join(" ")).toMatch(/RESEND_API_KEY/);
+    const original = config.mail.resendApiKey;
+    // @ts-expect-error deliberately violating readonly in a test
+    config.mail.resendApiKey = "";
+    try {
+      expect(() => assertConfigValid()).not.toThrow();
+      expect(assertConfigValid().join(" ")).toMatch(/RESEND_API_KEY/);
+    } finally {
+      // @ts-expect-error restoring the readonly value
+      config.mail.resendApiKey = original;
+    }
+  });
+
+  it("stops warning about email once a key is configured", () => {
+    const original = config.mail.resendApiKey;
+    // @ts-expect-error deliberately violating readonly in a test
+    config.mail.resendApiKey = "re_test_key";
+    try {
+      expect(assertConfigValid().join(" ")).not.toMatch(/RESEND_API_KEY/);
+    } finally {
+      // @ts-expect-error restoring the readonly value
+      config.mail.resendApiKey = original;
+    }
   });
 
   /**
@@ -104,20 +134,42 @@ describe("degradation instead of failure", () => {
     expect(config.auth.tokenTtl).toBe("7d");
   });
 
-  it("keeps the reward derivable from price and cap", () => {
-    expect(TASK_PRICE_LAMPORTS).toBe(100_000_000);
-    expect(MAX_SUBMISSIONS_PER_TASK).toBe(100);
-    expect(REWARD_PER_SUBMISSION_LAMPORTS).toBe(1_000_000n);
+  /**
+   * The reward is no longer a global constant — creators choose a budget and a
+   * slot count per task, so what config pins down is the *range* those choices
+   * may fall in. `planBudget` enforces it; these assertions keep the bounds
+   * from being widened into something that pays dust or strands SOL.
+   */
+  it("bounds task budgets so neither end of the trade-off pays dust", () => {
+    expect(MIN_TASK_BUDGET_LAMPORTS).toBeLessThan(MAX_TASK_BUDGET_LAMPORTS);
+    expect(MIN_SUBMISSIONS_PER_TASK).toBeLessThan(MAX_SUBMISSIONS_PER_TASK);
 
-    // The invariant that keeps the platform solvent: paying every slot must
-    // never cost more than the task was funded for.
-    expect(REWARD_PER_SUBMISSION_LAMPORTS * BigInt(MAX_SUBMISSIONS_PER_TASK)).toBe(
-      BigInt(TASK_PRICE_LAMPORTS),
+    // A worker's reward must clear the ~5000-lamport fee they eventually pay to
+    // withdraw it, or the work costs more to collect than it pays.
+    expect(MIN_REWARD_PER_SUBMISSION_LAMPORTS).toBeGreaterThan(5_000n);
+
+    // The smallest legal task must still be able to pay its smallest legal
+    // split. If this fails, some budgets are accepted that no slot count can
+    // satisfy — a task nobody can create.
+    expect(MIN_TASK_BUDGET_LAMPORTS / BigInt(MIN_SUBMISSIONS_PER_TASK)).toBeGreaterThanOrEqual(
+      MIN_REWARD_PER_SUBMISSION_LAMPORTS,
     );
+  });
+
+  it("keeps the composer defaults inside the permitted range", () => {
+    expect(BigInt(TASK_PRICE_LAMPORTS)).toBeGreaterThanOrEqual(MIN_TASK_BUDGET_LAMPORTS);
+    expect(BigInt(TASK_PRICE_LAMPORTS)).toBeLessThanOrEqual(MAX_TASK_BUDGET_LAMPORTS);
+    expect(DEFAULT_SUBMISSIONS_PER_TASK).toBeGreaterThanOrEqual(MIN_SUBMISSIONS_PER_TASK);
+    expect(DEFAULT_SUBMISSIONS_PER_TASK).toBeLessThanOrEqual(MAX_SUBMISSIONS_PER_TASK);
   });
 
   it("sets a withdrawal minimum above the network fee", () => {
     expect(MIN_WITHDRAWAL_LAMPORTS).toBeGreaterThan(5_000n);
+  });
+
+  /** A deposit that cannot fund even the smallest task is a support ticket. */
+  it("sets a deposit minimum that can fund at least the smallest task", () => {
+    expect(MIN_DEPOSIT_LAMPORTS).toBeGreaterThanOrEqual(MIN_TASK_BUDGET_LAMPORTS);
   });
 });
 

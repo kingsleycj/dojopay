@@ -8,3 +8,7 @@ node_modules
 # Backups of .env made by tooling — these contain the same secrets.
 .env.backup-*
 .env.*.backup
+
+# Compiled output. Render builds this on deploy; committing it means every PR
+# carries a second, stale copy of the whole backend.
+/dist

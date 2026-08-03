@@ -1,8 +1,14 @@
 import type { Request, Response } from "express";
-import { createImageUploadUrl } from "../lib/s3.js";
+import { createImageUploadUrl } from "../lib/storage.js";
 import * as analytics from "../services/analytics.service.js";
 import * as tasks from "../services/task.service.js";
-import { createTaskInput, taskIdParam, updateTaskInput } from "../types/types.js";
+import {
+  budgetQuoteInput,
+  createTaskInput,
+  taskIdParam,
+  updateTaskInput,
+  uploadQuery,
+} from "../types/types.js";
 import { badRequest, unauthorized } from "../utils/errors.js";
 import { toJsonSafe } from "../utils/serialize.js";
 import { auditContextFrom } from "../services/audit.service.js";
@@ -18,11 +24,22 @@ function creatorId(req: Request): number {
 }
 
 export async function presignedUrl(req: Request, res: Response) {
-  const { url, fields } = await createImageUploadUrl(creatorId(req));
+  /**
+   * The content type is part of what gets signed for R2, so the browser must
+   * declare it up front and send the identical value on the PUT — a mismatch is
+   * rejected as a signature failure, which reads as a mysterious 403.
+   */
+  const contentType = uploadQuery.parse(req.query).contentType;
+
+  const upload = await createImageUploadUrl(creatorId(req), contentType);
   res.json({
     message: "Presigned URL generated successfully",
-    presignedUrl: url,
-    fields,
+    presignedUrl: upload.url,
+    key: upload.key,
+    publicUrl: upload.publicUrl,
+    maxBytes: upload.maxBytes,
+    // Retained so an older deployed frontend keeps working during a rollout.
+    fields: upload.fields,
   });
 }
 
@@ -62,6 +79,16 @@ export async function updateTask(req: Request, res: Response) {
   const input = updateTaskInput.parse(req.body);
   const task = await tasks.updateTask(creatorId(req), id, input);
   res.json({ message: "Task updated successfully", task: toJsonSafe(task) });
+}
+
+export async function cancelTask(req: Request, res: Response) {
+  const { id } = taskIdParam.parse(req.params);
+  res.json(toJsonSafe(await tasks.cancelTask(creatorId(req), id, auditContextFrom(req))));
+}
+
+export async function budgetQuote(req: Request, res: Response) {
+  const { budgetLamports, maxSubmissions } = budgetQuoteInput.parse(req.query);
+  res.json(tasks.quoteBudget(BigInt(budgetLamports), maxSubmissions));
 }
 
 export async function dashboard(req: Request, res: Response) {

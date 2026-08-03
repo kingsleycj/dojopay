@@ -1,8 +1,12 @@
 import { PayoutStatus } from "@prisma/client";
-import { ESTIMATED_TX_FEE_LAMPORTS, TASK_PRICE_LAMPORTS } from "../../config/index.js";
-import { getConnection, getPlatformWalletAddress } from "../../lib/solana.js";
+import { ESTIMATED_TX_FEE_LAMPORTS } from "../../config/index.js";
+import {
+  getConnection,
+  getPlatformWalletAddress,
+  verifyIncomingTransfer,
+} from "../../lib/solana.js";
+import { badRequest } from "../../utils/errors.js";
 import { requestPayout } from "../payout.service.js";
-import { verifyFundingTransaction } from "../task.service.js";
 import type {
   FundingVerification,
   PaymentsProvider,
@@ -21,14 +25,21 @@ import type {
 export class CustodialPaymentsProvider implements PaymentsProvider {
   readonly name = "custodial" as const;
 
-  async verifyTaskFunding(
+  async verifyDeposit(
     signature: string,
-    creatorAddress: string,
+    depositorAddress: string,
   ): Promise<FundingVerification> {
-    await verifyFundingTransaction(signature, creatorAddress);
+    const result = await verifyIncomingTransfer(signature, depositorAddress);
+
+    if (result.rejection) {
+      throw badRequest("That deposit could not be confirmed on chain", result.rejection);
+    }
+
     return {
-      amountLamports: BigInt(TASK_PRICE_LAMPORTS),
-      // Null means "the platform wallet holds this task's funds".
+      amountLamports: result.lamports,
+      // Null means "the platform wallet holds these funds" — which, under the
+      // custodial model, it does. Replay rejection lives on the unique
+      // `VaultEntry.signature`, where the credit is actually recorded.
       vaultAddress: null,
     };
   }

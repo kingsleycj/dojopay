@@ -1,44 +1,53 @@
 import { Prisma, TaskStatus } from "@prisma/client";
-import { MAX_SUBMISSIONS_PER_TASK } from "../config/index.js";
 import { prismaClient } from "../lib/prisma.js";
-import { toCdnUrl } from "../lib/s3.js";
+import { toCdnUrl } from "../lib/storage.js";
 import { badRequest, conflict, notFound } from "../utils/errors.js";
 import { AuditAction, auditAccount, auditSystem, type AuditContext } from "./audit.service.js";
+import { releaseReward } from "./vault.service.js";
 
 /**
  * Worker-side task discovery and submission.
  */
 
 /**
- * The next task this worker can do: open, not expired, not already answered by
+ * Tasks this worker can still do: open, not expired, not already answered by
  * them, and not yet at capacity.
  *
  * The capacity clause is the fix for the drain bug — previously any number of
- * workers could submit to a task funded for only 100 of them.
+ * workers could submit to a task funded for only 100 of them. It compares
+ * against each task's own `maxSubmissions` now that creators set it per task,
+ * which Prisma cannot express as a column-to-column filter, so the bound is
+ * applied after the read.
  */
-export async function getNextTask(workerId: number) {
-  const task = await prismaClient.task.findFirst({
-    where: {
-      status: TaskStatus.OPEN,
-      submissionCount: { lt: MAX_SUBMISSIONS_PER_TASK },
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-      submissions: { none: { worker_id: workerId } },
-    },
-    orderBy: { createdAt: "asc" },
-    include: { options: true },
-  });
+function availableTaskFilter(workerId: number): Prisma.TaskWhereInput {
+  return {
+    status: TaskStatus.OPEN,
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    submissions: { none: { worker_id: workerId } },
+  };
+}
 
-  if (!task) return null;
-
+function serializeWorkerTask(task: {
+  id: number;
+  title: string;
+  amount: bigint;
+  rewardPerSubmission: bigint;
+  maxSubmissions: number;
+  submissionCount: number;
+  expiresAt: Date | null;
+  createdAt: Date;
+  options: Array<{ id: number; image_url: string }>;
+}) {
   return {
     id: task.id,
     title: task.title,
     amount: task.amount.toString(),
-    rewardLamports: (task.amount / BigInt(MAX_SUBMISSIONS_PER_TASK)).toString(),
+    rewardLamports: task.rewardPerSubmission.toString(),
     expiresAt: task.expiresAt?.toISOString() ?? null,
     createdAt: task.createdAt.toISOString(),
     totalSubmissions: task.submissionCount,
-    maxSubmissions: MAX_SUBMISSIONS_PER_TASK,
+    maxSubmissions: task.maxSubmissions,
+    spotsRemaining: Math.max(0, task.maxSubmissions - task.submissionCount),
     options: task.options.map((option) => ({
       id: option.id,
       imageUrl: toCdnUrl(option.image_url),
@@ -46,13 +55,55 @@ export async function getNextTask(workerId: number) {
   };
 }
 
+export async function getNextTask(workerId: number) {
+  // Read a small window and pick the first with capacity, rather than one row
+  // that might already be full. Cheap because `submissionCount >= max` is rare.
+  const candidates = await prismaClient.task.findMany({
+    where: availableTaskFilter(workerId),
+    orderBy: { createdAt: "asc" },
+    include: { options: true },
+    take: 25,
+  });
+
+  const task = candidates.find((candidate) => candidate.submissionCount < candidate.maxSubmissions);
+  return task ? serializeWorkerTask(task) : null;
+}
+
 /**
- * Record a worker's answer and credit their pending balance.
+ * Every task this worker could take on, best-paying first.
+ *
+ * Workers used to be handed one task at a time with no way to see what else was
+ * there — fine when every task paid the same 0.001 SOL, misleading now that
+ * creators set their own rewards and one queue position can be worth ten times
+ * another.
+ */
+export async function listAvailableTasks(workerId: number, limit = 50) {
+  const candidates = await prismaClient.task.findMany({
+    where: availableTaskFilter(workerId),
+    orderBy: [{ rewardPerSubmission: "desc" }, { createdAt: "asc" }],
+    include: { options: true },
+    take: limit * 2,
+  });
+
+  return candidates
+    .filter((task) => task.submissionCount < task.maxSubmissions)
+    .slice(0, limit)
+    .map(serializeWorkerTask);
+}
+
+/**
+ * Record a worker's answer, credit their pending balance, and consume the
+ * matching slice of the creator's vault reservation.
  *
  * Everything happens in one transaction, and the capacity check uses a
  * conditional `updateMany` rather than a read-then-write: two workers racing for
- * the last slot both saw `count < 100` under the old code and both got paid.
+ * the last slot both saw `count < max` under the old code and both got paid.
  * Here the second one's update matches zero rows and the transaction aborts.
+ *
+ * The vault leg is new and it is the point of the whole exercise. A worker being
+ * credited and a creator's committed funds being drawn down are now one atomic
+ * event, so "what workers are owed" and "what creators have committed" cannot
+ * drift apart.
  */
 export async function submitTask(
   workerId: number,
@@ -62,7 +113,10 @@ export async function submitTask(
 ) {
   const task = await prismaClient.task.findUnique({
     where: { id: taskId },
-    include: { options: { select: { id: true } } },
+    include: {
+      options: { select: { id: true } },
+      user: { select: { account: { select: { id: true, vault: { select: { id: true } } } } } },
+    },
   });
 
   if (!task) throw notFound("Task not found", "TASK_NOT_FOUND");
@@ -75,7 +129,7 @@ export async function submitTask(
     throw badRequest("This task has expired", "TASK_EXPIRED");
   }
 
-  if (task.submissionCount >= MAX_SUBMISSIONS_PER_TASK) {
+  if (task.submissionCount >= task.maxSubmissions) {
     throw badRequest("This task is already full", "TASK_FULL");
   }
 
@@ -83,7 +137,8 @@ export async function submitTask(
     throw badRequest("That option does not belong to this task", "INVALID_OPTION");
   }
 
-  const reward = task.amount / BigInt(MAX_SUBMISSIONS_PER_TASK);
+  const reward = task.rewardPerSubmission;
+  const creatorVaultId = task.user.account.vault?.id ?? null;
 
   const worker = await prismaClient.worker.findUnique({
     where: { id: workerId },
@@ -97,7 +152,7 @@ export async function submitTask(
         where: {
           id: taskId,
           status: TaskStatus.OPEN,
-          submissionCount: { lt: MAX_SUBMISSIONS_PER_TASK },
+          submissionCount: { lt: task.maxSubmissions },
         },
         data: { submissionCount: { increment: 1 } },
       });
@@ -120,20 +175,32 @@ export async function submitTask(
         data: { pending_amount: { increment: reward } },
       });
 
+      // Draw the reward out of the creator's reservation. Skipped for tasks
+      // created before vaults existed: they have no reservation to draw from,
+      // and inventing one would make a creator's balance go negative.
+      if (task.vaultFunded && creatorVaultId) {
+        await releaseReward(tx, creatorVaultId, reward, {
+          taskId,
+          description: `Submission reward — ${task.title}`,
+        });
+      }
+
       // Close the task once the slot we just took was the last one.
       const updated = await tx.task.findUniqueOrThrow({
         where: { id: taskId },
         select: { submissionCount: true },
       });
 
-      if (updated.submissionCount >= MAX_SUBMISSIONS_PER_TASK) {
+      const taskFull = updated.submissionCount >= task.maxSubmissions;
+
+      if (taskFull) {
         await tx.task.update({
           where: { id: taskId },
           data: { status: TaskStatus.COMPLETED, done: true },
         });
       }
 
-      return { submission, reward, taskFull: updated.submissionCount >= MAX_SUBMISSIONS_PER_TASK };
+      return { submission, reward, taskFull };
     });
 
     await auditAccount(worker?.account_id, AuditAction.SUBMISSION_CREATED, {
@@ -263,7 +330,7 @@ export async function getWorkerEarnings(workerId: number, page: number, limit: n
 }
 
 export async function getWorkerDashboard(workerId: number) {
-  const [worker, submissions, nextTask] = await Promise.all([
+  const [worker, submissions, available, completedTasks] = await Promise.all([
     prismaClient.worker.findUnique({ where: { id: workerId } }),
     prismaClient.submission.findMany({
       where: { worker_id: workerId },
@@ -271,16 +338,21 @@ export async function getWorkerDashboard(workerId: number) {
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
-    getNextTask(workerId),
+    listAvailableTasks(workerId, 50),
+    prismaClient.submission.count({ where: { worker_id: workerId } }),
   ]);
 
   if (!worker) throw notFound("Worker not found", "WORKER_NOT_FOUND");
 
-  const completedTasks = await prismaClient.submission.count({ where: { worker_id: workerId } });
+  // Real numbers rather than the previous `nextTask ? 1 : 0`, which reported
+  // "1 available task" whether there was one waiting or four hundred.
+  const availableValue = available.reduce((sum, task) => sum + BigInt(task.rewardLamports), 0n);
 
   return {
     metrics: {
-      availableTasks: nextTask ? 1 : 0,
+      availableTasks: available.length,
+      /** What this worker could earn by clearing the whole queue. */
+      availableValue: availableValue.toString(),
       completedTasks,
       pendingEarnings: worker.pending_amount.toString(),
       totalEarned: worker.withdrawn_amount.toString(),
@@ -293,6 +365,8 @@ export async function getWorkerDashboard(workerId: number) {
       createdAt: submission.createdAt.toISOString(),
       expiresAt: submission.task.expiresAt?.toISOString() ?? null,
     })),
-    nextTask,
+    /** Best-paying task first, so the highest-value work is the default next. */
+    nextTask: available[0] ?? null,
+    queue: available.slice(0, 8),
   };
 }

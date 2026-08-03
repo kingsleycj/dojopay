@@ -32,21 +32,68 @@ function optional(name: string, fallback: string): string {
   return value && value.trim() !== "" ? value : fallback;
 }
 
+/**
+ * First non-empty of several environment variables.
+ *
+ * Used where a setting is being renamed: the new name wins, the old one keeps
+ * working, and the error message names every accepted spelling rather than only
+ * the first one tried.
+ */
+function requiredFrom(names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value && value.trim() !== "") return value;
+  }
+
+  if (isTest) return `test-${names[0]}`;
+
+  throw new Error(
+    `Missing required environment variable ${names[0]}` +
+      (names.length > 1 ? ` (or ${names.slice(1).join(", ")})` : "") +
+      `. Set it before starting the server — see CLAUDE.md §6.`,
+  );
+}
+
 /** Lamports in one SOL. */
 export const LAMPORTS_PER_SOL = 1_000_000_000;
 
-/** Price a creator pays to fund one task. */
+/**
+ * Default task budget, used to pre-fill the composer.
+ *
+ * Was the *only* possible budget: every task cost exactly this, split 100 ways.
+ * Creators now choose both numbers, so this is a starting point rather than a
+ * rule. Kept as a constant because the legacy funding path still checks it.
+ */
 export const TASK_PRICE_LAMPORTS = 100_000_000; // 0.1 SOL
 
 /**
- * A task accepts this many submissions before it closes. The worker reward is
- * `task.amount / MAX_SUBMISSIONS_PER_TASK`, so this cap is what bounds total
- * payout to the amount actually funded. It was never enforced before Phase 3.
+ * Bounds on the budget a creator may commit to one task.
+ *
+ * The floor is not arbitrary: below it the per-submission reward approaches the
+ * ~5000-lamport network fee a worker eventually pays to withdraw it, so the
+ * work would cost more to collect than it pays.
  */
-export const MAX_SUBMISSIONS_PER_TASK = 100;
+export const MIN_TASK_BUDGET_LAMPORTS = 10_000_000n; // 0.01 SOL
+export const MAX_TASK_BUDGET_LAMPORTS = 1_000_000_000_000n; // 1000 SOL
 
-/** Reward per accepted submission, in lamports. */
-export const REWARD_PER_SUBMISSION_LAMPORTS = BigInt(TASK_PRICE_LAMPORTS) / BigInt(MAX_SUBMISSIONS_PER_TASK);
+/** Bounds on how many submissions one task may accept. */
+export const MIN_SUBMISSIONS_PER_TASK = 5;
+export const MAX_SUBMISSIONS_PER_TASK = 1000;
+
+/** Default slot count, used to pre-fill the composer. */
+export const DEFAULT_SUBMISSIONS_PER_TASK = 100;
+
+/**
+ * A worker must earn at least this much per submission.
+ *
+ * Guards the other end of the same trade-off as the budget floor: a creator
+ * could otherwise spread a legal budget across so many slots that each answer
+ * pays dust.
+ */
+export const MIN_REWARD_PER_SUBMISSION_LAMPORTS = 100_000n; // 0.0001 SOL
+
+/** Smallest top-up that may be added to a vault. */
+export const MIN_DEPOSIT_LAMPORTS = 10_000_000n; // 0.01 SOL
 
 /**
  * Withdrawals below this are refused: a Solana transfer costs ~5000 lamports in
@@ -151,12 +198,57 @@ export const config = {
     platformWalletPrivateKey: required("PRIVATE_KEY"),
   },
 
-  s3: {
-    bucket: required("S3_BUCKET_NAME"),
-    region: optional("S3_BUCKET_REGION", "us-east-1"),
-    accessKeyId: required("S3_BUCKET_ACCESS_KEY_ID"),
-    secretAccessKey: required("S3_BUCKET_SECRET_ACCESS_KEY"),
-    cloudfrontUrl: optional("CLOUDFRONT_URL", "https://d1vs1llhujzng9.cloudfront.net/"),
+  /**
+   * Object storage: Cloudflare R2.
+   *
+   * Each value falls back to its old `S3_*` name so the code can deploy before
+   * the environment is switched over — otherwise the first deploy of this change
+   * would boot into "missing required variable" until every key was updated by
+   * hand. Once R2 is configured everywhere, the `S3_*` fallbacks below are dead
+   * and can be deleted.
+   */
+  storage: {
+    bucket: requiredFrom(["R2_BUCKET_NAME", "S3_BUCKET_NAME"]),
+    accessKeyId: requiredFrom(["R2_ACCESS_KEY_ID", "S3_BUCKET_ACCESS_KEY_ID"]),
+    secretAccessKey: requiredFrom(["R2_SECRET_ACCESS_KEY", "S3_BUCKET_SECRET_ACCESS_KEY"]),
+
+    /**
+     * The S3-compatible API host for the account, i.e.
+     * `https://<account-id>.r2.cloudflarestorage.com`.
+     *
+     * Derived from `R2_ACCOUNT_ID` when not given outright, because the account
+     * id is the value Cloudflare's dashboard actually shows and hand-assembling
+     * the URL is an easy thing to get subtly wrong.
+     */
+    get endpoint(): string {
+      const explicit = process.env.R2_ENDPOINT;
+      if (explicit && explicit.trim() !== "") return explicit.trim().replace(/\/$/, "");
+
+      const accountId = process.env.R2_ACCOUNT_ID?.trim();
+      if (accountId) return `https://${accountId}.r2.cloudflarestorage.com`;
+
+      if (isTest) return "https://test-account.r2.cloudflarestorage.com";
+
+      throw new Error(
+        "Missing R2 endpoint. Set R2_ACCOUNT_ID (preferred) or R2_ENDPOINT — " +
+          "see CLAUDE.md §6.",
+      );
+    },
+
+    /**
+     * Where uploaded objects are publicly readable. Trailing slash enforced, so
+     * `${publicUrl}${key}` is always a valid URL regardless of how it was typed.
+     *
+     * This is *not* the API endpoint above: R2 buckets are private by default
+     * and are exposed either through a custom domain or an `r2.dev` subdomain.
+     */
+    get publicUrl(): string {
+      const value =
+        process.env.R2_PUBLIC_URL ||
+        process.env.CLOUDFRONT_URL ||
+        "https://d1vs1llhujzng9.cloudfront.net/";
+      return value.endsWith("/") ? value : `${value}/`;
+    },
   },
 
   cors: {

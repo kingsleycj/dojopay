@@ -26,15 +26,21 @@ services:
         sync: false
       - key: PRIVATE_KEY
         sync: false
-      - key: S3_BUCKET_NAME
+      # Object storage: Cloudflare R2. The endpoint is derived from the account
+      # id, and the region is always the literal "auto" — there is no region
+      # variable to set.
+      - key: R2_ACCOUNT_ID
         sync: false
-      - key: S3_BUCKET_REGION
-        value: us-east-1
-      - key: S3_BUCKET_ACCESS_KEY_ID
+      - key: R2_BUCKET_NAME
         sync: false
-      - key: S3_BUCKET_SECRET_ACCESS_KEY
+      - key: R2_ACCESS_KEY_ID
         sync: false
-      - key: CLOUDFRONT_URL
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      # Where uploaded objects are publicly readable — an r2.dev subdomain or a
+      # custom domain. NOT the S3 API endpoint. Buckets are private by default,
+      # so without this every task image 404s for workers.
+      - key: R2_PUBLIC_URL
         sync: false
       # User sessions. One token per person; roles resolve from profiles.
       - key: JWT_SECRET
