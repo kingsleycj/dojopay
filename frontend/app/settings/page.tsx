@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { AppShell } from "@/components/shared/AppShell";
 import { showToast } from "@/components/Toast";
 import { RoleGuard, useAuth } from "@/lib/auth";
@@ -46,6 +46,7 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const { account, refresh, linkWallet, walletConnected, walletAddress, isBusy, error, clearError } =
     useAuth();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
 
   const [linkEmailValue, setLinkEmailValue] = useState("");
   const [linkPasswordValue, setLinkPasswordValue] = useState("");
@@ -205,9 +206,18 @@ function SettingsContent() {
                 </p>
               </>
             ) : (
-              <div className="flex justify-center [&_.wallet-adapter-button]:w-full [&_.wallet-adapter-button]:justify-center">
-                <WalletMultiButton />
-              </div>
+              // Our own button rather than the adapter's `WalletMultiButton`,
+              // whose fixed purple styling and "Select Wallet" label read as a
+              // settings control instead of an action, and cannot be sized to
+              // match the rest of this page.
+              <button
+                type="button"
+                onClick={() => setWalletModalVisible(true)}
+                className="flex h-11 w-full items-center justify-center gap-2.5 rounded-lg bg-[#f97316] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#ea580c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2"
+              >
+                <Wallet className="h-[18px] w-[18px]" />
+                Connect a wallet
+              </button>
             )}
           </div>
         )}
