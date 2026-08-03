@@ -36,6 +36,7 @@ automatically once it is full.
 - Analytics computed from real timestamps
 
 ### For workers
+- Sign up with an email, Google, or a wallet — no wallet needed to start
 - Browse available tasks, one at a time
 - Get credited immediately on submission
 - Withdraw the accumulated balance to your own wallet, authorised by a wallet
@@ -89,18 +90,27 @@ Architecture, conventions, and the phased plan live in [CLAUDE.md](CLAUDE.md).
 git clone https://github.com/kingsleycj/dojopay.git
 cd dojopay
 
-# backend
-cd backend
-npm install
-cp .env.example .env      # fill in the values below
-npx prisma migrate dev
-npm run dev
+npm run install:all                       # root + backend + frontend
 
-# frontend
-cd ../frontend
-npm install
-cp .env.example .env.local
-npm run dev               # http://localhost:5174
+cp backend/.env.example backend/.env      # fill in the values below
+cp frontend/.env.example frontend/.env.local
+
+npm run db:migrate                        # create the database schema
+npm run dev                               # starts BOTH servers
+```
+
+- API → http://localhost:3000
+- App → http://localhost:5174
+
+`backend/` and `frontend/` are independent npm projects; the root `package.json`
+just runs them together. Other useful root scripts:
+
+```bash
+npm run test           # both test suites
+npm run typecheck      # both projects
+npm run build          # both projects
+npm run admin:create   # create the first admin account
+npm run db:studio      # browse the database
 ```
 
 ### Environment
@@ -108,10 +118,16 @@ npm run dev               # http://localhost:5174
 Backend `.env` — **the server refuses to start if any of these are missing.**
 There are no fallback secrets.
 
+See [backend/.env.example](backend/.env.example) for the annotated list. The
+essentials:
+
 ```env
 DATABASE_URL=postgresql://...
-JWT_SECRET=<random>
-WORKER_JWT_SECRET=<a different random value>
+JWT_SECRET=<random>          # user sessions
+ADMIN_JWT_SECRET=<different> # admin sessions
+RESEND_API_KEY=              # optional locally; required in production
+GOOGLE_CLIENT_ID=            # optional — omit to hide the Google button
+GOOGLE_CLIENT_SECRET=
 RPC_URL=https://api.devnet.solana.com
 PLATFORM_WALLET_ADDRESS=<base58 pubkey>
 PRIVATE_KEY=<base58 secret key for that wallet>
@@ -119,11 +135,15 @@ S3_BUCKET_NAME=
 S3_BUCKET_REGION=us-east-1
 S3_BUCKET_ACCESS_KEY_ID=
 S3_BUCKET_SECRET_ACCESS_KEY=
-FRONTEND_URL=
+FRONTEND_URL=http://localhost:5174
 ```
 
-`JWT_SECRET` and `WORKER_JWT_SECRET` must differ — sharing one would let a
-creator token authenticate as a worker.
+`JWT_SECRET` and `ADMIN_JWT_SECRET` must differ — sharing one would let any user
+token be replayed against the admin API.
+
+Without `RESEND_API_KEY` the verification and reset links are printed to the
+server log instead of emailed, which is fine for local development. The server
+refuses to boot in production without it.
 
 Frontend `.env.local`:
 
@@ -137,9 +157,8 @@ NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS=<same as backend>
 ### Tests
 
 ```bash
-cd backend  && npm run test:run   # 76 tests
-cd frontend && npm run test:run   # 33 tests
-cd escrow   && cargo test -p dojopay-escrow   # 7 tests
+npm run test            # backend (172) + frontend (34)
+npm run test:escrow     # on-chain program logic (7)
 ```
 
 A pre-commit hook runs both JS suites.
@@ -148,10 +167,19 @@ A pre-commit hook runs both JS suites.
 
 Base path `/v1`. All money values cross the wire as **lamport strings**.
 
+### Auth — `/v1/auth`
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/register` · `/login` | email + password |
+| GET/POST | `/wallet/challenge` · `/wallet` | wallet sign-in |
+| GET | `/google` · `/google/callback` | Google OAuth |
+| POST | `/verify-email` · `/forgot-password` · `/reset-password` | email flows |
+| GET | `/me` | current account |
+| POST/DELETE | `/link-wallet` · `/link-email` | connect credentials |
+
 ### Creator — `/v1/user`
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/signin` | wallet-signature login |
 | GET | `/presignedUrl` | S3 presigned upload |
 | POST | `/task` | verify funding, create task |
 | GET | `/tasks` | list own tasks |
@@ -164,7 +192,6 @@ Base path `/v1`. All money values cross the wire as **lamport strings**.
 ### Worker — `/v1/worker`
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/signin` | wallet-signature login |
 | GET | `/nextTask` | next available task |
 | POST | `/submission` | submit a choice |
 | GET | `/balance` | pending + withdrawn |
@@ -172,7 +199,11 @@ Base path `/v1`. All money values cross the wire as **lamport strings**.
 | GET | `/payouts` | withdrawal history |
 | GET | `/earnings` | paginated ledger |
 | GET | `/dashboard` | metrics + next task |
-| POST | `/payout` | signed withdrawal |
+| POST | `/payout` | signed withdrawal — requires a linked wallet |
+
+### Admin — `/v1/admin`
+Separate credentials, separate secret, TOTP required. No signup route: the first
+admin is created with `npm run admin:create`.
 
 ### Public
 | Method | Path | Purpose |
@@ -192,8 +223,14 @@ variables.
 
 What is actually implemented:
 
-- **Non-custodial identity.** Users sign a message; DojoPay never sees a private
-  key or a password.
+- **Flexible sign-up, non-custodial payouts.** Email, Google, or wallet. Passwords
+  are argon2id-hashed; DojoPay never sees a private key. A wallet is required to
+  withdraw, and it is proven by signature rather than simply typed in.
+- **Separate admin surface.** Its own table, secret, and route prefix, with
+  mandatory TOTP and no self-registration. Admins can read and moderate but cannot
+  move money, adjust balances, or impersonate.
+- **Append-only audit log** of every account, admin, and system action — including
+  when an admin views someone's record.
 - **Funding verification.** A task only goes live if a real, successful,
   correctly-addressed transaction of exactly 0.1 SOL exists on chain, paid by the
   signed-in creator. Funding signatures are unique, so one payment cannot create

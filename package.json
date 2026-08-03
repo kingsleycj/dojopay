@@ -1,8 +1,33 @@
 {
+  "name": "dojopay",
+  "private": true,
+  "description": "Root task runner. backend/ and frontend/ stay independent npm projects with their own lockfiles.",
+  "scripts": {
+    "prepare": "husky",
+    "dev": "concurrently --names \"api,web\" --prefix-colors \"cyan,magenta\" --kill-others-on-fail \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "start": "concurrently --names \"api,web\" --prefix-colors \"cyan,magenta\" \"npm --prefix backend run start\" \"npm --prefix frontend run start\"",
+    "test": "npm --prefix backend run test:run && npm --prefix frontend run test:run",
+    "test:backend": "npm --prefix backend run test:run",
+    "test:frontend": "npm --prefix frontend run test:run",
+    "test:escrow": "cargo test --manifest-path escrow/Cargo.toml -p dojopay-escrow",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend exec tsc -- --noEmit",
+    "install:all": "npm install && npm --prefix backend install && npm --prefix frontend install",
+    "db:migrate": "npm --prefix backend exec prisma migrate dev",
+    "db:deploy": "npm --prefix backend run migrate:deploy",
+    "db:studio": "npm --prefix backend exec prisma studio",
+    "db:reset": "npm --prefix backend exec prisma migrate reset",
+    "admin:create": "npm --prefix backend run admin:create"
+  },
   "devDependencies": {
+    "concurrently": "^9.1.2",
     "husky": "^9.1.7"
   },
-  "scripts": {
-    "prepare": "husky"
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -288,6 +288,26 @@ Separate secret; no user token is ever accepted. No signup route exists.
 
 ## 6. Commands
 
+### From the repo root
+
+```bash
+npm run install:all   # install root + backend + frontend
+npm run dev           # backend (:3000) and frontend (:5174) together
+npm run test          # both JS suites
+npm run typecheck     # both projects
+npm run build         # both projects
+npm run admin:create  # bootstrap the first admin
+npm run db:migrate    # prisma migrate dev
+npm run db:reset      # DROPS ALL DATA, then re-applies migrations
+```
+
+`backend/` and `frontend/` remain **independent npm projects with their own
+lockfiles** — the root `package.json` is a task runner (`concurrently`), not an npm
+workspace. That keeps Render's `rootDir: backend` and Vercel's `frontend/` builds
+working exactly as they do today. See Decision 10.
+
+### Per project
+
 ```bash
 # backend
 cd backend
