@@ -123,7 +123,7 @@ export async function getCreatorEarnings(userId) {
     const tasks = await prismaClient.task.findMany({
         where: { user_id: userId },
         include: {
-            submissions: { include: { worker: { select: { id: true, address: true } } } },
+            submissions: { include: { worker: { include: { account: { select: { walletAddress: true, displayName: true } } } } } },
         },
         orderBy: { createdAt: "desc" },
     });
@@ -163,7 +163,7 @@ export async function getCreatorEarnings(userId) {
                 transactionHash: paid ? payout?.signature : undefined,
                 taskId: task.id,
                 taskTitle: task.title,
-                workerAddress: submission.worker.address,
+                workerAddress: submission.worker.account.walletAddress ?? `worker-${submission.worker_id}`,
                 submissionId: submission.id,
             });
         }

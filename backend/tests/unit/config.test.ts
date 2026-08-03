@@ -6,7 +6,21 @@ import {
   TASK_PRICE_LAMPORTS,
   assertConfigValid,
   config,
+  isAdminEnabled,
 } from "../../src/config/index.js";
+
+/** Temporarily override a readonly config value for the duration of a check. */
+function withAdminSecret(value: string, run: () => void) {
+  const original = config.auth.adminJwtSecret;
+  // @ts-expect-error deliberately violating readonly in a test
+  config.auth.adminJwtSecret = value;
+  try {
+    run();
+  } finally {
+    // @ts-expect-error restoring
+    config.auth.adminJwtSecret = original;
+  }
+}
 
 describe("config", () => {
   it("loads the account and admin secrets from the environment", () => {
@@ -19,15 +33,56 @@ describe("config", () => {
    * A shared secret would let any user token be replayed against `/v1/admin`.
    */
   it("rejects a configuration where the user and admin secrets match", () => {
-    const original = config.auth.adminJwtSecret;
-    // @ts-expect-error deliberately violating readonly to exercise the guard
-    config.auth.adminJwtSecret = config.auth.jwtSecret;
-
-    expect(() => assertConfigValid()).toThrow(/must differ/);
-
-    // @ts-expect-error restoring
-    config.auth.adminJwtSecret = original;
+    withAdminSecret(config.auth.jwtSecret, () => {
+      expect(() => assertConfigValid()).toThrow(/must differ/);
+    });
     expect(() => assertConfigValid()).not.toThrow();
+  });
+});
+
+/**
+ * Deploy safety.
+ *
+ * A deployment that has not yet been given the new variables must keep serving
+ * users. Anything merely missing degrades to a warning; only a genuinely unsafe
+ * combination is fatal, because an outage is worse than a disabled admin panel.
+ */
+describe("degradation instead of failure", () => {
+  it("boots without ADMIN_JWT_SECRET and disables the admin API", () => {
+    withAdminSecret("", () => {
+      expect(() => assertConfigValid()).not.toThrow();
+      expect(isAdminEnabled()).toBe(false);
+      expect(assertConfigValid().join(" ")).toMatch(/admin API .* is disabled/i);
+    });
+  });
+
+  it("enables the admin API once a distinct secret is set", () => {
+    withAdminSecret("a-separate-admin-secret", () => {
+      expect(isAdminEnabled()).toBe(true);
+    });
+  });
+
+  /** A shared secret must disable admin, never silently accept user tokens. */
+  it("refuses to enable the admin API on a shared secret", () => {
+    withAdminSecret(config.auth.jwtSecret, () => {
+      expect(isAdminEnabled()).toBe(false);
+    });
+  });
+
+  it("warns rather than throws when email is unconfigured", () => {
+    // No RESEND_API_KEY is set under test.
+    expect(() => assertConfigValid()).not.toThrow();
+    expect(assertConfigValid().join(" ")).toMatch(/RESEND_API_KEY/);
+  });
+
+  /**
+   * Keeps the historical value so an existing deployment behaves identically
+   * without needing a new variable. It is a public address, not a secret.
+   */
+  it("defaults the platform wallet to the previously hardcoded address", () => {
+    expect(config.solana.platformWalletAddress).toBe(
+      "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont",
+    );
   });
 
   /**

@@ -85,8 +85,13 @@ export const config = {
      * Signs admin sessions. A completely separate secret from the user one, so
      * a stolen or forged user token can never satisfy an admin check even if
      * the role logic has a bug.
+     *
+     * Optional rather than required: an existing deployment that has not set it
+     * yet should keep serving users. When it is absent the admin API is simply
+     * **not mounted** (see `adminEnabled`), which is safer than either failing
+     * to boot or falling back to a guessable secret.
      */
-    adminJwtSecret: required("ADMIN_JWT_SECRET"),
+    adminJwtSecret: optional("ADMIN_JWT_SECRET", ""),
     /** Admin sessions are short: staff tooling reads everyone's data. */
     adminTokenTtl: "8h",
 
@@ -131,10 +136,17 @@ export const config = {
     txLookupAttempts: 5,
     txLookupBaseDelayMs: isTest ? 0 : 2000,
     /**
-     * Wallet that receives task funding and pays workers out. Was hardcoded in
-     * two separate files, which meant rotating it required a code change.
+     * Wallet that receives task funding and pays workers out.
+     *
+     * Was hardcoded in two separate files, which meant rotating it required a
+     * code change. Now configurable, but it keeps the historical value as the
+     * default: this is a public address, not a secret, and defaulting means an
+     * existing deployment behaves identically without needing a new variable.
      */
-    platformWalletAddress: required("PLATFORM_WALLET_ADDRESS"),
+    platformWalletAddress: optional(
+      "PLATFORM_WALLET_ADDRESS",
+      "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont",
+    ),
     /** base58 secret key for the platform wallet. Signing key — never log this. */
     platformWalletPrivateKey: required("PRIVATE_KEY"),
   },
@@ -165,19 +177,60 @@ export const config = {
  * Called from the server bootstrap; importing this module alone does not validate,
  * so tests can import constants without a full environment.
  */
-export function assertConfigValid(): void {
-  if (config.auth.jwtSecret === config.auth.adminJwtSecret) {
+/**
+ * True when the admin API should be mounted at all.
+ *
+ * Requires its own secret, and one that differs from the user secret — a shared
+ * value would let any user token be replayed against `/v1/admin`. If either
+ * condition fails the admin routes are left unregistered, so the failure mode is
+ * "the admin section 404s" rather than "the whole API is down".
+ */
+export function isAdminEnabled(): boolean {
+  const secret = config.auth.adminJwtSecret;
+  return secret.length > 0 && secret !== config.auth.jwtSecret;
+}
+
+/**
+ * Boot-time checks.
+ *
+ * Deliberately narrow: it throws only for a configuration that would be
+ * *unsafe*, never merely incomplete. Missing optional features degrade — they do
+ * not take the API down — because an outage is a worse outcome than a disabled
+ * admin panel or an unsent email.
+ *
+ * Returns warnings for the caller to log.
+ */
+export function assertConfigValid(): string[] {
+  const warnings: string[] = [];
+
+  // Unsafe, not merely incomplete: this one is fatal.
+  if (config.auth.adminJwtSecret && config.auth.adminJwtSecret === config.auth.jwtSecret) {
     throw new Error(
       "JWT_SECRET and ADMIN_JWT_SECRET must differ — sharing one secret would let " +
         "any user token be replayed against the admin API.",
     );
   }
 
-  if (config.isProduction && !config.mail.resendApiKey) {
-    throw new Error(
-      "RESEND_API_KEY is required in production: without it verification and " +
-        "password-reset links are only written to the server log, so nobody can " +
-        "verify an address or recover an account.",
+  if (!config.auth.adminJwtSecret) {
+    warnings.push(
+      "ADMIN_JWT_SECRET is not set — the admin API at /v1/admin is disabled. " +
+        "Set it to a random value distinct from JWT_SECRET to enable it.",
     );
   }
+
+  if (!config.mail.resendApiKey) {
+    warnings.push(
+      config.isProduction
+        ? "RESEND_API_KEY is not set — verification and password-reset links are " +
+          "being written to the server log instead of emailed. Users signing up " +
+          "with email cannot verify or recover their accounts until this is set."
+        : "RESEND_API_KEY is not set — emails will be logged, not sent.",
+    );
+  }
+
+  if (!config.google.enabled) {
+    warnings.push("Google sign-in is disabled (GOOGLE_CLIENT_ID/SECRET not set).");
+  }
+
+  return warnings;
 }

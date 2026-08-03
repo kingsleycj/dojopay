@@ -3,6 +3,7 @@ import { MAX_SUBMISSIONS_PER_TASK } from "../config/index.js";
 import { prismaClient } from "../lib/prisma.js";
 import { toCdnUrl } from "../lib/s3.js";
 import { badRequest, conflict, notFound } from "../utils/errors.js";
+import { AuditAction, auditAccount, auditSystem } from "./audit.service.js";
 /**
  * Worker-side task discovery and submission.
  */
@@ -49,7 +50,7 @@ export async function getNextTask(workerId) {
  * the last slot both saw `count < 100` under the old code and both got paid.
  * Here the second one's update matches zero rows and the transaction aborts.
  */
-export async function submitTask(workerId, taskId, optionId) {
+export async function submitTask(workerId, taskId, optionId, context) {
     const task = await prismaClient.task.findUnique({
         where: { id: taskId },
         include: { options: { select: { id: true } } },
@@ -69,8 +70,12 @@ export async function submitTask(workerId, taskId, optionId) {
         throw badRequest("That option does not belong to this task", "INVALID_OPTION");
     }
     const reward = task.amount / BigInt(MAX_SUBMISSIONS_PER_TASK);
+    const worker = await prismaClient.worker.findUnique({
+        where: { id: workerId },
+        select: { account_id: true },
+    });
     try {
-        return await prismaClient.$transaction(async (tx) => {
+        const outcome = await prismaClient.$transaction(async (tx) => {
             // Atomic claim on one of the remaining slots.
             const claimed = await tx.task.updateMany({
                 where: {
@@ -108,6 +113,24 @@ export async function submitTask(workerId, taskId, optionId) {
             }
             return { submission, reward, taskFull: updated.submissionCount >= MAX_SUBMISSIONS_PER_TASK };
         });
+        await auditAccount(worker?.account_id, AuditAction.SUBMISSION_CREATED, {
+            entityType: "task",
+            entityId: taskId,
+            metadata: {
+                submissionId: outcome.submission.id,
+                optionId,
+                rewardLamports: outcome.reward.toString(),
+            },
+            context,
+        });
+        if (outcome.taskFull) {
+            await auditSystem(AuditAction.TASK_COMPLETED, {
+                entityType: "task",
+                entityId: taskId,
+                metadata: { filledBySubmissionId: outcome.submission.id },
+            });
+        }
+        return outcome;
     }
     catch (error) {
         // Unique [worker_id, task_id] — this worker already answered this task.

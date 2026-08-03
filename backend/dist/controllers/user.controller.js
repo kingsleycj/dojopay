@@ -1,10 +1,10 @@
 import { createImageUploadUrl } from "../lib/s3.js";
-import { signInCreator } from "../services/auth.service.js";
 import * as analytics from "../services/analytics.service.js";
 import * as tasks from "../services/task.service.js";
-import { createTaskInput, signInInput, taskIdParam, updateTaskInput } from "../types/types.js";
+import { createTaskInput, taskIdParam, updateTaskInput } from "../types/types.js";
 import { badRequest, unauthorized } from "../utils/errors.js";
 import { toJsonSafe } from "../utils/serialize.js";
+import { auditContextFrom } from "../services/audit.service.js";
 /**
  * Creator HTTP handlers. These translate between HTTP and services and do
  * nothing else — no Prisma, no chain access, no business rules.
@@ -13,11 +13,6 @@ function creatorId(req) {
     if (!req.userId)
         throw unauthorized();
     return req.userId;
-}
-export async function signin(req, res) {
-    const { publicKey, signature } = signInInput.parse(req.body);
-    const result = await signInCreator(publicKey, signature);
-    res.json({ token: result.token });
 }
 export async function presignedUrl(req, res) {
     const { url, fields } = await createImageUploadUrl(creatorId(req));
@@ -29,7 +24,7 @@ export async function presignedUrl(req, res) {
 }
 export async function createTask(req, res) {
     const input = createTaskInput.parse(req.body);
-    const task = await tasks.createTask(creatorId(req), input);
+    const task = await tasks.createTask(creatorId(req), input, auditContextFrom(req));
     res.status(201).json({ id: task.id });
 }
 export async function listTasks(req, res) {

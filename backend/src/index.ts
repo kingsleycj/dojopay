@@ -12,7 +12,12 @@ import { expireStaleTasks } from "./services/task.service.js";
 const EXPIRY_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 async function main() {
-  assertConfigValid();
+  // Throws only on an unsafe configuration; anything merely missing comes back
+  // as a warning so an incomplete setup degrades instead of failing to boot.
+  for (const warning of assertConfigValid()) {
+    logger.warn(warning);
+  }
+
   await connectDB();
 
   const sweeper = setInterval(() => {
