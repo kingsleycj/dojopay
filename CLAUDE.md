@@ -81,22 +81,28 @@ src/
 ### Frontend (`frontend/`)
 
 ```
-app/                Next.js App Router routes
-├── (marketing)/    public landing
-├── creator/        dashboard | tasks | create | task/[id] | earnings
+app/
+├── page.tsx        landing + sign-in funnel (honours ?role, ?next, ?ref)
+├── layout.tsx      mounts WalletProviders → AuthProvider
+├── creator/        dashboard | tasks | create | task/[taskId] | task/[taskId]/edit | earnings
 ├── worker/         dashboard | tasks | earnings
-└── task/[id]/      public shareable task page (Phase 5)
+└── task/[taskId]/  PUBLIC shareable task page — server-rendered, no session
 components/
 ├── ui/             shadcn primitives — do not hand-edit, regenerate
+├── landing/        marketing sections
 ├── creator/        creator-only feature components
 ├── worker/         worker-only feature components
-└── shared/         cross-role components (appbar, sidebar, footer, guards)
+└── shared/         AppShell, WalletProviders, ShareButton, PublicTaskView
+hooks/              useWithdrawal, use-mobile
 lib/
-├── api/            typed API client (single axios instance + interceptors)
-├── auth/           auth context, session hook, route guards
-└── solana/         network config, wallet helpers
+├── api/            typed client + endpoint functions + wire types
+├── auth/           AuthProvider, useAuth, RoleGuard
+└── solana/         cluster config, platform wallet, explorer links
 utils/              pure helpers (lamport/SOL/USD conversion)
 ```
+
+Every signed-in page is `<RoleGuard role=…><AppShell …>{content}</AppShell></RoleGuard>` and
+nothing else — the page files are ~12 lines each.
 
 **Rules**
 - No component calls `axios` directly. All network access goes through `lib/api/`.
@@ -123,8 +129,14 @@ independent identities; this is intentional and load-bearing for the two-token a
 
 Worker balances are lamport `BigInt`s:
 - `pending_amount` — earned, not yet withdrawn.
-- `locked_amount` — cumulative amount already paid out. (Badly named; it is *not* an escrow
-  lock. Renaming is Phase 3.)
+- `withdrawn_amount` — cumulative amount already paid out. (Was `locked_amount`, which implied
+  an escrow lock it never performed; renamed in Phase 3.)
+- `referred_by` — wallet address of the worker whose share link brought them in, set once at
+  creation so a returning worker cannot be re-attributed.
+
+`Task` additionally carries `status` (`TaskStatus`), `submissionCount` for the capacity check,
+and `vaultAddress`, which is null while a task is funded through the custodial wallet and set
+once the escrow program owns its funds.
 
 ---
 
@@ -291,25 +303,33 @@ Goal: the ledger tells the truth and the platform wallet cannot be drained.
 - [x] Analytics use real `createdAt`; placeholder buckets and the hardcoded `85%` removed
 - [x] Funding verification now checks `meta.err` — a *failed* transaction could previously fund a task
 
-### Phase 4 — Frontend foundation `TODO`
+### Phase 4 — Frontend foundation `DONE`
 Goal: one way to do each thing.
-- [ ] `lib/api/` typed client: single axios instance, auth header + 401 handling in interceptors
-- [ ] `lib/auth/` context + `useSession`; delete every `setInterval(…, 1000)` localStorage poll
-- [ ] `lib/solana/config.ts` — single cluster source; fixes the Mainnet/Devnet split
-- [ ] `<RoleGuard>` replaces copy-pasted access-denied blocks
-- [ ] Fix withdrawal on the earnings page (currently posts no signature → always 400)
-- [ ] Dedupe the two `TaskDetailView`s and the three inline `WorkerAppbar` copies
-- [ ] Extract `useTaskSubmission`, `useEarnings` hooks from fetch-in-component code
+- [x] `lib/api/` typed client: single axios instance, auth header + 401 handling in interceptors
+- [x] `lib/auth/` context + `useAuth`; every `setInterval(…, 1000)` localStorage poll deleted,
+      replaced by a `dojopay:auth-changed` event plus cross-tab `storage`
+- [x] `lib/solana/config.ts` — single cluster source; fixes the Mainnet/Devnet split
+- [x] `<RoleGuard>` replaces copy-pasted access-denied blocks
+- [x] Fix withdrawal on the earnings page (posted no signature → always 400)
+- [x] `useWithdrawal` hook shared by the app bar and the earnings page
+- [x] Dedupe the two `TaskDetailView`s and the three inline `WorkerAppbar` copies into `AppShell`
+- [x] Local duplicate interfaces replaced by the shared `lib/api/types` contract
+- [x] Creator sidebar was `hidden lg:block` — creators had no navigation at all on mobile
+- [x] `UploadImage` no longer substitutes a `data:` URL on failure, which looked like a
+      successful upload and then produced tasks with broken images
+- [x] Deleted `app/(root)`, `Appbar`, `DashboardView`, `TasksView`, `WorkerView`,
+      `MobileMenu`, `UserTypeModal`, `Hero`, `Footer`, `components/pages`
 
-### Phase 5 — Share links & onboarding `TODO`
+### Phase 5 — Share links & onboarding `DONE`
 Goal: a task link works for someone who has never heard of DojoPay.
-- [ ] `GET /v1/public/task/:id` — unauthenticated preview payload
-- [ ] `/task/[id]` public page: title, reward, expiry, image preview, one CTA
-- [ ] Share button: copy link, native `navigator.share`, X/Telegram/WhatsApp intents
-- [ ] Deep-link preservation: `?next=` survives wallet-connect and role selection
-- [ ] Post-signup redirect drops the new worker on the shared task, not a generic dashboard
-- [ ] Referral attribution: `?ref=<address>` recorded on worker creation
-- [ ] OG/Twitter card metadata so links unfurl with the task image
+- [x] `GET /v1/public/task/:id` — unauthenticated preview payload, no worker identities
+- [x] `/task/[id]` public page, server-rendered: title, reward, spots left, expiry, previews
+- [x] Share button: copy link, native `navigator.share`, X/Telegram/WhatsApp intents
+- [x] Deep-link preservation: `?next=` survives wallet-connect and role selection,
+      guarded against open redirects (relative same-origin paths only)
+- [x] Post-signup redirect drops the new worker on the shared task, not a generic dashboard
+- [x] Referral attribution: `?ref=<address>` recorded once on worker creation
+- [x] OG/Twitter card metadata so links unfurl with the task image
 
 ### Phase 6 — On-chain escrow program `TODO`
 Goal: remove the platform's ability to abscond with or lose task funds.
@@ -351,14 +371,14 @@ Discovered in the audit of `main`. Each links to the phase that resolves it.
 | 2 | `Task.signature` not unique — one 0.1 SOL payment can create unlimited tasks. | Critical | 2 | FIXED |
 | 3 | `MAX_SUBMISSIONS_PER_TASK` never enforced and `done` never set — unbounded workers claim 0.001 SOL each against a task funded with 0.1 SOL, draining the platform wallet. | Critical | 3 | FIXED |
 | 4 | Unauthenticated `/v1/worker/test-earnings` exposes worker 1's ledger. | High | 3 | FIXED |
-| 5 | Earnings-page withdrawal posts no signature; backend requires one, so it always 400s. Only the Appbar path works. | High | 4 | open |
+| 5 | Earnings-page withdrawal posts no signature; backend requires one, so it always 400s. Only the Appbar path works. | High | 4 | FIXED |
 | 6 | Payouts are written `Processing` and never updated; creator earnings branch on `Success`, so paid work never shows as paid. | High | 3 | FIXED |
 | 7 | Migrations are SQLite DDL (`AUTOINCREMENT`) against a `postgresql` datasource; `prisma/dev.db` is checked in. | High | 2 | FIXED |
 | 8 | `JWT_SECRET` falls back to `"fallback-secret-for-dev"` in production if unset. | High | 1 | FIXED |
-| 9 | `app/(root)/layout.tsx` selects **Mainnet** while every other path uses Devnet. | Medium | 4 | open |
+| 9 | `app/(root)/layout.tsx` selects **Mainnet** while every other path uses Devnet. | Medium | 4 | FIXED |
 | 10 | Analytics fabricate data: weekly/monthly buckets dump everything into the current period, `/tasks` overwrites `createdAt` with `new Date()`, `retentionRate` is hardcoded `"85%"`. | Medium | 3 | FIXED |
 | 11 | `PATCH` and `PUT /task/:id` are byte-identical duplicates. | Low | 3 | FIXED |
-| 12 | Pages poll `localStorage` on a 1-second `setInterval` to detect auth changes. | Medium | 4 | open |
+| 12 | Pages poll `localStorage` on a 1-second `setInterval` to detect auth changes. | Medium | 4 | FIXED |
 | 13 | No rate limiting despite the README claiming it. | Medium | 1 | FIXED |
 | 14 | `DEPLOYMENT.md` holds live-looking AWS keys, a Neon URL, and the platform wallet private key. Gitignored and never committed, but present in plaintext and duplicated into Render. | High | 7 | open |
 | 15 | Funding verification ignored `meta.err`, so a transaction that **failed** on chain could fund a task if its balance deltas lined up. | High | 3 | FIXED |

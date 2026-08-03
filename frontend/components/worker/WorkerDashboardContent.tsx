@@ -1,8 +1,7 @@
 "use client";
 
-import { BACKEND_URL } from "@/utils";
-import axios from "axios";
-import { useEffect, useState } from "react";
+import { workerEndpoints } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/Toast";
 import { lamportsToSol, solToUsdSync, getSolPrice } from "@/utils/convert";
@@ -56,54 +55,32 @@ export const WorkerDashboardContent = ({
     router.push("/worker/earnings");
   };
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
-      const token = localStorage.getItem("workerToken");
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
-      // Single dashboard API call
-      const response = await axios.get(`${BACKEND_URL}/v1/worker/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = response.data;
-
-      // Convert lamports to SOL for amounts
-      const pendingEarnings = lamportsToSol(
-        data.metrics.pendingEarnings || "0",
-      ).toString();
-      const totalEarned = lamportsToSol(
-        data.metrics.totalEarned || "0",
-      ).toString();
-
-      // Convert recent tasks amounts to SOL
-      const recentTasks = data.recentTasks.map((task: any) => ({
-        ...task,
-        amount: lamportsToSol(task.amount || "1000000").toString(),
-      }));
+      const dashboard = await workerEndpoints.dashboard();
 
       setData({
-        availableTasks: data.metrics.availableTasks,
-        completedTasks: data.metrics.completedTasks,
-        pendingEarnings,
-        totalEarned,
-        recentTasks,
+        availableTasks: dashboard.metrics.availableTasks,
+        completedTasks: dashboard.metrics.completedTasks,
+        // Amounts arrive as lamport strings; convert once, here, for display.
+        pendingEarnings: lamportsToSol(dashboard.metrics.pendingEarnings).toString(),
+        totalEarned: lamportsToSol(dashboard.metrics.totalEarned).toString(),
+        recentTasks: dashboard.recentTasks.map((task) => ({
+          ...task,
+          status: "completed" as const,
+          expiresAt: task.expiresAt ?? undefined,
+          amount: lamportsToSol(task.amount).toString(),
+        })),
       });
-    } catch (error: any) {
+    } catch (error) {
+      // The API client clears an invalid token and RoleGuard handles the
+      // redirect; this component only has to stop showing stale numbers.
       console.error("Error fetching worker dashboard data:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("workerToken");
-        window.location.href = "/";
-      } else {
-        setData(null);
-      }
+      setData(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Fetch SOL price for USD conversions

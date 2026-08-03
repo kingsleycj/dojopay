@@ -1,8 +1,7 @@
 "use client";
 
-import { BACKEND_URL } from "@/utils";
-import axios from "axios";
-import { useEffect, useState } from "react";
+import { creatorEndpoints, type CreatorTask } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/Toast";
 import { lamportsToSol } from "@/utils/convert";
@@ -21,21 +20,8 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
-interface TaskOption {
-  id: number;
-  imageUrl: string;
-}
-
-interface Task {
-  id: number;
-  title: string;
-  amount: string;
-  status: "ongoing" | "completed" | "expired";
-  createdAt: string;
-  expiresAt: string | null;
-  totalSubmissions: number;
-  options: TaskOption[];
-}
+// Single source of truth for the wire format; see lib/api/types.
+type Task = CreatorTask;
 
 interface CreatorTasksProps {
   onTaskCreate?: () => void;
@@ -50,7 +36,7 @@ export const CreatorTasksContent = ({
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<
-    "all" | "ongoing" | "completed" | "expired"
+    "all" | "OPEN" | "COMPLETED" | "EXPIRED"
   >("all");
   const router = useRouter();
 
@@ -66,33 +52,22 @@ export const CreatorTasksContent = ({
     router.push(`/creator/task/${taskId}/edit`);
   };
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const response = await axios.get(`${BACKEND_URL}/v1/user/tasks`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setTasks(response.data.tasks);
-    } catch (error: any) {
+      setTasks(await creatorEndpoints.listTasks());
+    } catch (error) {
+      // Token cleanup and redirect are handled by the API client and RoleGuard.
       console.error("Error fetching tasks:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("token");
-        window.location.href = "/";
-      } else {
-        setTasks([]);
-      }
+      setTasks([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    void fetchTasks();
+  }, [fetchTasks]);
 
   const filteredTasks = tasks.filter((task) => {
     const matchesSearch = task.title
@@ -105,21 +80,21 @@ export const CreatorTasksContent = ({
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "ongoing":
+      case "OPEN":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
             <Clock className="h-3 w-3 mr-1" />
             Ongoing
           </span>
         );
-      case "completed":
+      case "COMPLETED":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
             <CheckCircle className="h-3 w-3 mr-1" />
             Completed
           </span>
         );
-      case "expired":
+      case "EXPIRED":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
             <Clock className="h-3 w-3 mr-1" />
@@ -237,9 +212,9 @@ export const CreatorTasksContent = ({
               className="pl-10 pr-8 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#f97316] focus:border-transparent appearance-none bg-white"
             >
               <option value="all">All Tasks</option>
-              <option value="ongoing">Ongoing</option>
-              <option value="completed">Completed</option>
-              <option value="expired">Expired</option>
+              <option value="OPEN">Ongoing</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="EXPIRED">Expired</option>
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
               <svg
@@ -372,7 +347,7 @@ export const CreatorTasksContent = ({
                     <Eye className="h-4 w-4" />
                     View Details
                   </button>
-                  {task.status === "ongoing" && (
+                  {task.status === "OPEN" && (
                     <button
                       onClick={() => handleEditTask(task.id)}
                       className="flex-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-3 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm"
@@ -405,7 +380,7 @@ export const CreatorTasksContent = ({
               Ongoing
             </div>
             <div className="mt-1 text-2xl font-bold text-gray-900">
-              {tasks.filter((t) => t.status === "ongoing").length}
+              {tasks.filter((t) => t.status === "OPEN").length}
             </div>
           </div>
 
@@ -414,7 +389,7 @@ export const CreatorTasksContent = ({
               Completed
             </div>
             <div className="mt-1 text-2xl font-bold text-gray-900">
-              {tasks.filter((t) => t.status === "completed").length}
+              {tasks.filter((t) => t.status === "COMPLETED").length}
             </div>
           </div>
         </div>

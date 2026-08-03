@@ -1,10 +1,10 @@
 "use client";
 
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection, clusterApiUrl, PublicKey } from "@solana/web3.js";
-import axios from "axios";
-import { useEffect, useState } from "react";
-import { BACKEND_URL } from "@/utils";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { useCallback, useEffect, useState } from "react";
+import { creatorEndpoints, type CreatorEarnings } from "@/lib/api";
+import { SOLANA_ENDPOINT, explorerTxUrl } from "@/lib/solana/config";
 import { lamportsToSol } from "@/utils/convert";
 import {
   DollarSign,
@@ -23,33 +23,9 @@ import {
   Plus,
 } from "lucide-react";
 
-interface EarningRecord {
-  id: number;
-  amount: string;
-  date: string;
-  status: "completed" | "paid" | "ongoing";
-  transactionHash?: string;
-  taskId?: number;
-  taskTitle?: string;
-  workerAddress?: string;
-  submissionId?: number;
-}
-
-interface CreatorEarningsData {
-  totalSpent: string;
-  totalTasks: number;
-  completedTasks: number;
-  pendingTasks: number;
-  averageTaskCost: string;
-  earnings: EarningRecord[];
-  metrics: {
-    monthlySpent: string;
-    weeklySpent: string;
-    dailySpent: string;
-    totalWorkers: number;
-    retentionRate: string;
-  };
-}
+// Wire format lives in lib/api/types.
+type EarningRecord = CreatorEarnings["earnings"][number];
+type CreatorEarningsData = CreatorEarnings;
 
 interface CreatorEarningsProps {
   onBack?: () => void;
@@ -82,7 +58,7 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
     if (!publicKey) return;
 
     try {
-      const connection = new Connection(clusterApiUrl("devnet"));
+      const connection = new Connection(SOLANA_ENDPOINT);
       const balance = await connection.getBalance(publicKey);
       setWalletBalance(lamportsToSol(balance.toString()));
     } catch (error) {
@@ -90,29 +66,17 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
     }
   };
 
-  const fetchEarnings = async () => {
+  const fetchEarnings = useCallback(async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const response = await axios.get(`${BACKEND_URL}/v1/user/earnings`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setData(response.data);
-    } catch (error: any) {
+      setData(await creatorEndpoints.earnings());
+    } catch (error) {
       console.error("Error fetching creator earnings:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("token");
-        window.location.href = "/";
-      } else {
-        setData(null);
-      }
+      setData(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchEarnings();
@@ -126,7 +90,7 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
         earning.workerAddress
           ?.toLowerCase()
           .includes(searchTerm.toLowerCase()) ||
-        earning.submissionId?.toString().includes(searchTerm.toLowerCase());
+        String(earning.id).includes(searchTerm.toLowerCase());
       const matchesFilter =
         filterStatus === "all" || earning.status === filterStatus;
       return matchesSearch && matchesFilter;
@@ -179,10 +143,7 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
   };
 
   const openSolanaExplorer = (txHash: string) => {
-    window.open(
-      `https://explorer.solana.com/tx/${txHash}?cluster=devnet`,
-      "_blank",
-    );
+    window.open(explorerTxUrl(txHash), "_blank", "noopener,noreferrer");
   };
 
   const exportData = () => {
@@ -549,7 +510,7 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                             {earning.taskTitle || "Unknown Task"}
                           </div>
                           <div className="text-xs text-gray-500">
-                            ID: #{earning.taskId} • Sub: #{earning.submissionId}
+                            Task #{earning.taskId} • Submission #{earning.id}
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">

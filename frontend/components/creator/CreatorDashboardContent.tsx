@@ -1,8 +1,7 @@
 "use client";
 
-import { BACKEND_URL } from "@/utils";
-import axios from "axios";
-import { useEffect, useState } from "react";
+import { creatorEndpoints } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { showToast } from "@/components/Toast";
 import { lamportsToSol, solToUsdSync, getSolPrice } from "@/utils/convert";
@@ -128,29 +127,17 @@ export const CreatorDashboardContent = ({
     router.push("/creator/earnings");
   };
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const response = await axios.get(`${BACKEND_URL}/v1/user/dashboard`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setData(response.data);
-    } catch (error: any) {
+      setData(await creatorEndpoints.dashboard());
+    } catch (error) {
       console.error("Error fetching creator dashboard data:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("token");
-        window.location.href = "/";
-      } else {
-        setData(null);
-      }
+      setData(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     // Fetch SOL price for USD conversions

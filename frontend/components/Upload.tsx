@@ -1,10 +1,13 @@
 "use client";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { UploadImage } from "@/components/UploadImage";
-import { BACKEND_URL } from "@/utils";
-import axios from "axios";
+import { creatorEndpoints } from "@/lib/api";
+import {
+  PLATFORM_WALLET_ADDRESS,
+  TASK_PRICE_LAMPORTS,
+} from "@/lib/solana/config";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { showToast } from "./Toast";
 
@@ -24,77 +27,33 @@ export const Upload = () => {
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem("token");
-      console.log("Token from localStorage:", token);
-
-      if (!token) {
-        showToast("Please sign in first", "error");
-        setIsSubmitting(false);
-        return;
-      }
-
-      // If backend is not running, allow data URLs for submission
-      // Otherwise, only send uploaded images
+      // Only S3-hosted images can be submitted. A `data:` URL would blow past
+      // the request limit and cannot be served back to workers, so the old
+      // fallback of sending them anyway produced tasks with broken images.
       const uploadedImages = images.filter((img) => !img.startsWith("data:"));
-      const allImages = uploadedImages.length > 0 ? uploadedImages : images;
 
-      if (allImages.length === 0) {
-        showToast("Please add at least one image before submitting", "error");
-        setIsSubmitting(false);
+      if (uploadedImages.length < 2) {
+        showToast(
+          "Add at least two uploaded images so workers have something to choose between",
+          "error",
+        );
         return;
       }
 
-      const requestData = {
-        options: allImages.map((image) => ({
-          imageUrl: image,
-        })),
+      const task = await creatorEndpoints.createTask({
+        options: uploadedImages.map((imageUrl) => ({ imageUrl })),
         title,
         signature: txSignature,
         expirationDate: expirationDate || null,
-      };
+      });
 
-      console.log("Submitting task with data:", requestData);
-
-      const response = await axios.post(
-        `${BACKEND_URL}/v1/user/task`,
-        requestData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-
-      console.log("Task submission response:", response.data);
-      showToast("Task submitted successfully!", "success");
-      router.push(`/creator/task/${response.data.id}`);
+      showToast("Task created successfully!", "success");
+      router.push(`/creator/task/${task.id}`);
     } catch (error: any) {
+      // The API client surfaces the backend's message, e.g. "This transaction
+      // has already funded a task" — far more useful than a generic failure.
       console.error("Failed to submit task:", error);
-      if (axios.isAxiosError(error)) {
-        console.error("Axios error details:", {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
-          config: {
-            url: error.config?.url,
-            method: error.config?.method,
-            headers: error.config?.headers,
-          },
-        });
-
-        // If authentication fails, clear token and redirect to landing page
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          console.log(
-            "Upload authentication failed, clearing token and redirecting",
-          );
-          localStorage.removeItem("token");
-          localStorage.removeItem("workerToken");
-          window.location.href = "/";
-          return;
-        }
-      }
-      showToast("Failed to submit task. Please try again.", "error");
+      showToast(error?.message ?? "Failed to create task. Please try again.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -108,10 +67,8 @@ export const Upload = () => {
       const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: publicKey!,
-          toPubkey: new PublicKey(
-            "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont",
-          ),
-          lamports: 100000000,
+          toPubkey: new PublicKey(PLATFORM_WALLET_ADDRESS),
+          lamports: TASK_PRICE_LAMPORTS,
         }),
       );
 
