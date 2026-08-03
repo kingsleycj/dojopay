@@ -12,8 +12,8 @@ export default defineConfig({
     env: {
       NODE_ENV: "test",
       DATABASE_URL: "postgresql://test:test@localhost:5432/dojopay_test",
-      JWT_SECRET: "test-creator-secret",
-      WORKER_JWT_SECRET: "test-worker-secret",
+      JWT_SECRET: "test-account-secret",
+      ADMIN_JWT_SECRET: "test-admin-secret",
       RPC_URL: "https://api.devnet.solana.com",
       // Valid base58 pubkey so PublicKey construction succeeds in tests.
       PLATFORM_WALLET_ADDRESS: "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont",

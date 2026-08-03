@@ -6,6 +6,7 @@ import { getConnection } from "../lib/solana.js";
 import { logger } from "../lib/logger.js";
 import { badRequest, conflict, notFound } from "../utils/errors.js";
 import type { CreateTaskInput, UpdateTaskInput } from "../types/types.js";
+import { AuditAction, auditAccount, auditSystem, type AuditContext } from "./audit.service.js";
 
 /**
  * Task lifecycle: funding verification, creation, reads, and closure.
@@ -98,17 +99,33 @@ function parseExpiry(value: string | null | undefined): Date | null {
   return date;
 }
 
-export async function createTask(userId: number, input: CreateTaskInput) {
-  const user = await prismaClient.user.findUnique({ where: { id: userId } });
-  if (!user) throw notFound("Creator account not found", "USER_NOT_FOUND");
+export async function createTask(
+  userId: number,
+  input: CreateTaskInput,
+  context?: AuditContext,
+) {
+  const user = await prismaClient.user.findUnique({
+    where: { id: userId },
+    include: { account: { select: { walletAddress: true } } },
+  });
+  if (!user) throw notFound("Creator profile not found", "USER_NOT_FOUND");
 
-  await verifyFundingTransaction(input.signature, user.address);
+  // Funding must come from the creator's own linked wallet, so a task cannot be
+  // paid for by a wallet the account has not proven it controls.
+  if (!user.account.walletAddress) {
+    throw badRequest(
+      "Connect a Solana wallet before creating a task — that is the wallet the funding must come from.",
+      "WALLET_REQUIRED",
+    );
+  }
+
+  await verifyFundingTransaction(input.signature, user.account.walletAddress);
 
   const expiresAt = parseExpiry(input.expirationDate);
 
   // Task and options are created together: a task with no options is unusable
   // and the old code could leave one behind if the option insert failed.
-  return prismaClient.task.create({
+  const task = await prismaClient.task.create({
     data: {
       title: input.title ?? "Select your preferred choice",
       amount: BigInt(TASK_PRICE_LAMPORTS),
@@ -121,6 +138,20 @@ export async function createTask(userId: number, input: CreateTaskInput) {
     },
     include: { options: true },
   });
+
+  await auditAccount(user.account_id, AuditAction.TASK_CREATED, {
+    entityType: "task",
+    entityId: task.id,
+    metadata: {
+      title: task.title,
+      amountLamports: task.amount.toString(),
+      optionCount: task.options.length,
+      fundingSignature: input.signature,
+    },
+    context,
+  });
+
+  return task;
 }
 
 /** Derived status — a task can be past its expiry without a writer having noticed. */
@@ -175,7 +206,9 @@ export async function getTaskResults(userId: number, taskId: number) {
 
   const submissions = await prismaClient.submission.findMany({
     where: { task_id: taskId },
-    include: { worker: true },
+    include: {
+      worker: { include: { account: { select: { walletAddress: true, displayName: true } } } },
+    },
     orderBy: { createdAt: "desc" },
   });
 
@@ -206,7 +239,7 @@ export async function getTaskResults(userId: number, taskId: number) {
     },
     submissions: submissions.map((submission) => ({
       workerId: submission.worker_id,
-      workerAddress: submission.worker.address,
+      workerAddress: submission.worker.account.walletAddress ?? `Worker #${submission.worker_id}`,
       optionId: submission.option_id,
       amount: submission.amount.toString(),
       submittedAt: submission.createdAt.toISOString(),
@@ -275,6 +308,12 @@ export async function expireStaleTasks(): Promise<number> {
     data: { status: TaskStatus.EXPIRED },
   });
 
-  if (count > 0) logger.info("Expired stale tasks", { count });
+  if (count > 0) {
+    logger.info("Expired stale tasks", { count });
+    await auditSystem(AuditAction.TASK_EXPIRED, {
+      entityType: "task",
+      metadata: { count },
+    });
+  }
   return count;
 }

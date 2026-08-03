@@ -68,16 +68,55 @@ export const config = {
   },
 
   auth: {
-    /** Creator tokens. */
-    jwtSecret: required("JWT_SECRET"),
     /**
-     * Worker tokens. Must be a genuinely independent secret — deriving it from
-     * the creator secret means one leak compromises both roles.
+     * Signs account sessions.
+     *
+     * One token per person, not per role. Before accounts existed there were
+     * two secrets, one for creator tokens and one for worker tokens; with an
+     * `Account` owning both profiles that split is meaningless — a user who
+     * signs in with Google would otherwise have to sign in twice to switch
+     * modes. Role authorisation is now a profile lookup, not a second login.
      */
-    workerJwtSecret: required("WORKER_JWT_SECRET"),
-    /** Sign-in messages the client is expected to have signed. */
-    creatorSignInMessage: "Sign into DojoPay as a creator",
-    workerSignInMessage: "Sign into DojoPay as a worker",
+    jwtSecret: required("JWT_SECRET"),
+    /** Session lifetime. */
+    tokenTtl: "7d",
+
+    /**
+     * Signs admin sessions. A completely separate secret from the user one, so
+     * a stolen or forged user token can never satisfy an admin check even if
+     * the role logic has a bug.
+     */
+    adminJwtSecret: required("ADMIN_JWT_SECRET"),
+    /** Admin sessions are short: staff tooling reads everyone's data. */
+    adminTokenTtl: "8h",
+
+    /** Message a wallet signs to prove ownership at sign-in or when linking. */
+    walletChallengePrefix: "Sign in to DojoPay",
+
+    /** How long an email verification or password reset link stays valid. */
+    emailTokenTtlMinutes: 60,
+  },
+
+  mail: {
+    /** Unset falls back to the console driver, which logs links instead of sending. */
+    resendApiKey: process.env.RESEND_API_KEY ?? "",
+    from: optional("MAIL_FROM", "DojoPay <onboarding@resend.dev>"),
+    /** Base URL used to build links in emails. */
+    appUrl: optional("FRONTEND_URL", "http://localhost:5174"),
+  },
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    /** Must match the redirect URI registered in the Google console exactly. */
+    callbackUrl: optional(
+      "GOOGLE_CALLBACK_URL",
+      "http://localhost:3000/v1/auth/google/callback",
+    ),
+    /** Google login is simply unavailable, rather than broken, when unconfigured. */
+    get enabled(): boolean {
+      return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+    },
   },
 
   solana: {
@@ -127,10 +166,18 @@ export const config = {
  * so tests can import constants without a full environment.
  */
 export function assertConfigValid(): void {
-  if (config.auth.jwtSecret === config.auth.workerJwtSecret) {
+  if (config.auth.jwtSecret === config.auth.adminJwtSecret) {
     throw new Error(
-      "JWT_SECRET and WORKER_JWT_SECRET must differ — sharing one secret lets a " +
-        "creator token authenticate as a worker.",
+      "JWT_SECRET and ADMIN_JWT_SECRET must differ — sharing one secret would let " +
+        "any user token be replayed against the admin API.",
+    );
+  }
+
+  if (config.isProduction && !config.mail.resendApiKey) {
+    throw new Error(
+      "RESEND_API_KEY is required in production: without it verification and " +
+        "password-reset links are only written to the server log, so nobody can " +
+        "verify an address or recover an account.",
     );
   }
 }

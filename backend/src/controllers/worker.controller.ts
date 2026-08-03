@@ -1,25 +1,14 @@
 import type { Request, Response } from "express";
-import { signInWorker } from "../services/auth.service.js";
 import * as payouts from "../services/payout.service.js";
 import * as workers from "../services/worker.service.js";
-import { createSubmissionInput, paginationInput, payoutInput, signInInput } from "../types/types.js";
+import { createSubmissionInput, paginationInput, payoutInput } from "../types/types.js";
 import { notFound, unauthorized } from "../utils/errors.js";
 import { toJsonSafe } from "../utils/serialize.js";
+import { auditContextFrom } from "../services/audit.service.js";
 
 function workerId(req: Request): number {
   if (!req.workerId) throw unauthorized();
   return req.workerId;
-}
-
-export async function signin(req: Request, res: Response) {
-  const { publicKey, signature, referredBy } = signInInput.parse(req.body);
-  const result = await signInWorker(publicKey, signature, referredBy ?? undefined);
-
-  res.json({
-    token: result.token,
-    pendingAmount: result.pendingAmount,
-    isNewWorker: result.isNewWorker,
-  });
 }
 
 export async function nextTask(req: Request, res: Response) {
@@ -32,7 +21,7 @@ export async function submit(req: Request, res: Response) {
   const { taskId, selection } = createSubmissionInput.parse(req.body);
   const id = workerId(req);
 
-  const result = await workers.submitTask(id, taskId, selection);
+  const result = await workers.submitTask(id, taskId, selection, auditContextFrom(req));
   const next = await workers.getNextTask(id);
 
   res.json({
@@ -67,5 +56,5 @@ export async function dashboard(req: Request, res: Response) {
 
 export async function requestPayout(req: Request, res: Response) {
   const { signature } = payoutInput.parse(req.body);
-  res.json(await payouts.requestPayout(workerId(req), signature));
+  res.json(await payouts.requestPayout(workerId(req), signature, auditContextFrom(req)));
 }

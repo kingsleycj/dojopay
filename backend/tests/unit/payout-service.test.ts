@@ -4,6 +4,7 @@ vi.mock("../../src/lib/prisma.js", () => ({
   prismaClient: {
     worker: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     payouts: { create: vi.fn(), findMany: vi.fn() },
+    auditLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },
   connectDB: vi.fn(),
@@ -44,8 +45,17 @@ const prisma = prismaClient as any;
 
 const WORKER_ADDRESS = "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont";
 
-function worker(pending: bigint) {
-  return { id: 5, address: WORKER_ADDRESS, pending_amount: pending, withdrawn_amount: 0n };
+/**
+ * Worker rows now hang off an Account, which owns the wallet address — the
+ * withdrawal destination comes from `account.walletAddress`, not the worker.
+ */
+function worker(pending: bigint, walletAddress: string | null = WORKER_ADDRESS) {
+  return {
+    id: 5,
+    pending_amount: pending,
+    withdrawn_amount: 0n,
+    account: { id: 50, walletAddress },
+  };
 }
 
 beforeEach(() => {
@@ -158,5 +168,42 @@ describe("requestPayout", () => {
   it("rejects an unknown worker", async () => {
     prisma.worker.findUnique.mockResolvedValue(null);
     await expect(requestPayout(5, "sig")).rejects.toMatchObject({ code: "WORKER_NOT_FOUND" });
+  });
+
+  /**
+   * The wallet gate. An account can sign up with only an email and earn by
+   * completing tasks, but SOL needs a destination — so a withdrawal without a
+   * linked wallet is refused before anything is debited.
+   */
+  it("refuses to pay an account with no linked wallet", async () => {
+    prisma.worker.findUnique.mockResolvedValue(worker(5_000_000n, null));
+
+    await expect(requestPayout(5, "sig")).rejects.toMatchObject({ code: "WALLET_REQUIRED" });
+    expect(prisma.worker.updateMany).not.toHaveBeenCalled();
+    expect(sendAndConfirmTransaction).not.toHaveBeenCalled();
+  });
+
+  it("records the payout lifecycle in the audit log", async () => {
+    prisma.worker.findUnique.mockResolvedValue(worker(5_000_000n));
+    sendAndConfirmTransaction.mockResolvedValue("tx-signature-3");
+
+    await requestPayout(5, "sig");
+
+    const actions = prisma.auditLog.create.mock.calls.map((call: any) => call[0].data.action);
+    expect(actions).toContain("PAYOUT_REQUESTED");
+    expect(actions).toContain("PAYOUT_SUCCEEDED");
+  });
+
+  it("never writes credential material into audit metadata", async () => {
+    prisma.worker.findUnique.mockResolvedValue(worker(5_000_000n));
+    sendAndConfirmTransaction.mockResolvedValue("tx-signature-4");
+
+    await requestPayout(5, "sig");
+
+    for (const call of prisma.auditLog.create.mock.calls) {
+      const serialised = JSON.stringify(call[0].data.metadata ?? {});
+      expect(serialised).not.toContain("passwordHash");
+      expect(serialised).not.toContain("totpSecret");
+    }
   });
 });

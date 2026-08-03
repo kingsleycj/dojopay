@@ -1,11 +1,11 @@
 import type { Request, Response } from "express";
 import { createImageUploadUrl } from "../lib/s3.js";
-import { signInCreator } from "../services/auth.service.js";
 import * as analytics from "../services/analytics.service.js";
 import * as tasks from "../services/task.service.js";
-import { createTaskInput, signInInput, taskIdParam, updateTaskInput } from "../types/types.js";
+import { createTaskInput, taskIdParam, updateTaskInput } from "../types/types.js";
 import { badRequest, unauthorized } from "../utils/errors.js";
 import { toJsonSafe } from "../utils/serialize.js";
+import { auditContextFrom } from "../services/audit.service.js";
 
 /**
  * Creator HTTP handlers. These translate between HTTP and services and do
@@ -15,12 +15,6 @@ import { toJsonSafe } from "../utils/serialize.js";
 function creatorId(req: Request): number {
   if (!req.userId) throw unauthorized();
   return req.userId;
-}
-
-export async function signin(req: Request, res: Response) {
-  const { publicKey, signature } = signInInput.parse(req.body);
-  const result = await signInCreator(publicKey, signature);
-  res.json({ token: result.token });
 }
 
 export async function presignedUrl(req: Request, res: Response) {
@@ -34,7 +28,7 @@ export async function presignedUrl(req: Request, res: Response) {
 
 export async function createTask(req: Request, res: Response) {
   const input = createTaskInput.parse(req.body);
-  const task = await tasks.createTask(creatorId(req), input);
+  const task = await tasks.createTask(creatorId(req), input, auditContextFrom(req));
   res.status(201).json({ id: task.id });
 }
 

@@ -12,14 +12,134 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// A creator: someone who funds tasks. Keyed by wallet address.
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+enum AccountStatus {
+  ACTIVE
+  /// Temporarily blocked by an admin. Can log in to see the reason, cannot act.
+  SUSPENDED
+  /// Permanently blocked. Cannot log in.
+  BANNED
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  WALLET
+}
+
+/// One human, one row.
+///
+/// Credentials live here, not on the role profiles, so a person who both posts
+/// and completes tasks has a single login and a single audit trail. `User` and
+/// `Worker` become *profiles* hanging off an account rather than independent
+/// identities keyed by wallet address.
+model Account {
+  id Int @id @default(autoincrement())
+
+  /// Null for wallet-first signups until they link an email in settings.
+  email         String?   @unique
+  emailVerified Boolean   @default(false)
+  /// Argon2id hash. Null for Google-only or wallet-only accounts.
+  passwordHash  String?
+  googleId      String?   @unique
+
+  displayName String?
+  avatarUrl   String?
+
+  /// Proven by an ed25519 signature, never simply asserted. Null until linked —
+  /// and a worker cannot withdraw without it.
+  walletAddress   String?   @unique
+  walletLinkedAt  DateTime?
+
+  /// How this account first signed up. Kept for funnel analysis; an account can
+  /// accumulate more methods over time.
+  signupProvider AuthProvider @default(EMAIL)
+
+  status           AccountStatus @default(ACTIVE)
+  statusReason     String?
+  statusChangedAt  DateTime?
+
+  /// Wallet address of whoever's share link brought them in.
+  referredBy String?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  /// Role profiles. Created on demand the first time the account acts in that
+  /// role, so signing up does not force a choice.
+  creatorProfile User?
+  workerProfile  Worker?
+
+  tokens    VerificationToken[]
+  auditLogs AuditLog[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum TokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+/// Short-lived single-use tokens for email flows.
+///
+/// Only the hash is stored: a leaked database dump must not let anyone reset a
+/// password or verify an address they do not control.
+model VerificationToken {
+  id         Int       @id @default(autoincrement())
+  account_id Int
+  account    Account   @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  type       TokenType
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([account_id, type])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// Role profiles
+// ---------------------------------------------------------------------------
+
+/// Creator profile: someone who funds tasks.
 model User {
-  id        Int       @id @default(autoincrement())
-  address   String    @unique
+  id         Int     @id @default(autoincrement())
+  account_id Int     @unique
+  account    Account @relation(fields: [account_id], references: [id], onDelete: Cascade)
+
   tasks     Task[]
   payouts   Payouts[]
   createdAt DateTime  @default(now())
 }
+
+/// Worker profile: someone who completes tasks.
+model Worker {
+  id         Int     @id @default(autoincrement())
+  account_id Int     @unique
+  account    Account @relation(fields: [account_id], references: [id], onDelete: Cascade)
+
+  /// Earned but not yet withdrawn, in lamports.
+  pending_amount BigInt @default(0)
+
+  /// Cumulative lamports already paid out. Previously named `locked_amount`,
+  /// which implied an escrow lock it never performed.
+  withdrawn_amount BigInt @default(0)
+
+  submissions Submission[]
+  payouts     Payouts[]
+  createdAt   DateTime     @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
 
 enum TaskStatus {
   /// Accepting submissions.
@@ -30,6 +150,9 @@ enum TaskStatus {
   EXPIRED
   /// Creator reclaimed the unspent balance.
   REFUNDED
+  /// Closed by an admin for abuse. Terminal; distinct from COMPLETED so the
+  /// difference is visible in reporting.
+  FORCE_CLOSED
 }
 
 model Task {
@@ -59,6 +182,9 @@ model Task {
   /// Null means the task is funded through the legacy custodial wallet.
   vaultAddress String?
 
+  /// Populated when an admin force-closes the task.
+  moderationReason String?
+
   options     Option[]
   submissions Submission[]
 
@@ -68,6 +194,7 @@ model Task {
 
   @@index([status, expiresAt])
   @@index([user_id])
+  @@index([createdAt])
 }
 
 model Option {
@@ -78,27 +205,6 @@ model Option {
   submissions Submission[]
 
   @@index([task_id])
-}
-
-/// A worker: someone who completes tasks. Keyed by wallet address.
-model Worker {
-  id      Int    @id @default(autoincrement())
-  address String @unique
-
-  /// Earned but not yet withdrawn, in lamports.
-  pending_amount BigInt @default(0)
-
-  /// Cumulative lamports already paid out. Previously named `locked_amount`,
-  /// which implied an escrow lock it never performed.
-  withdrawn_amount BigInt @default(0)
-
-  /// Wallet address of the worker whose share link brought this worker in.
-  /// Recorded once at creation.
-  referred_by String?
-
-  submissions Submission[]
-  payouts     Payouts[]
-  createdAt   DateTime     @default(now())
 }
 
 model Submission {
@@ -119,6 +225,7 @@ model Submission {
   @@unique([worker_id, task_id])
   @@index([worker_id])
   @@index([task_id])
+  @@index([createdAt])
 }
 
 enum PayoutStatus {
@@ -150,4 +257,98 @@ model Payouts {
 
   @@index([worker_id])
   @@index([status])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+
+enum AdminRole {
+  /// Full access including managing other admins.
+  OWNER
+  /// Read plus moderation actions.
+  ADMIN
+  /// Read-only. For anyone who needs numbers but not power.
+  ANALYST
+}
+
+/// Staff accounts. Deliberately a separate table from `Account` with its own
+/// JWT secret and its own route prefix, so no user token can ever satisfy an
+/// admin check. There is no admin signup route — the first OWNER is created by
+/// `npm run admin:create`, which runs against the database directly.
+model AdminUser {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  displayName  String
+  role         AdminRole @default(ANALYST)
+
+  /// Base32 TOTP secret. Required before the account can do anything: login
+  /// returns a setup challenge until 2FA is enrolled.
+  totpSecret  String?
+  totpEnabled Boolean @default(false)
+
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+enum ActorType {
+  ACCOUNT
+  ADMIN
+  /// Background jobs: expiry sweeps, payout confirmations.
+  SYSTEM
+}
+
+enum AuditSeverity {
+  INFO
+  NOTICE
+  WARNING
+  CRITICAL
+}
+
+/// Append-only record of everything that happens.
+///
+/// Never updated or deleted by application code — an audit log you can edit is
+/// not an audit log. Retention is handled out-of-band.
+model AuditLog {
+  id Int @id @default(autoincrement())
+
+  actorType      ActorType
+  actorAccountId Int?
+  actorAccount   Account?   @relation(fields: [actorAccountId], references: [id], onDelete: SetNull)
+  actorAdminId   Int?
+  actorAdmin     AdminUser? @relation(fields: [actorAdminId], references: [id], onDelete: SetNull)
+
+  /// Stable machine-readable verb, e.g. ACCOUNT_LOGIN, PAYOUT_SUCCEEDED.
+  action   String
+  severity AuditSeverity @default(INFO)
+
+  /// What the action was performed on, e.g. "task" / 42.
+  entityType String?
+  entityId   String?
+
+  /// Action-specific detail. Must never contain secrets, tokens, or password
+  /// hashes — this table is read by every admin.
+  metadata Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorAccountId, createdAt])
+  @@index([actorAdminId, createdAt])
+  @@index([action, createdAt])
+  @@index([entityType, entityId])
+  @@index([severity, createdAt])
+  @@index([createdAt])
 }

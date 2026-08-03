@@ -5,6 +5,7 @@ vi.mock("../../src/lib/prisma.js", () => ({
     task: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     user: { findUnique: vi.fn() },
     submission: { findMany: vi.fn() },
+    auditLog: { create: vi.fn() },
   },
   connectDB: vi.fn(),
   disconnectDB: vi.fn(),
@@ -125,7 +126,7 @@ describe("verifyFundingTransaction", () => {
 
 describe("createTask", () => {
   it("rejects an expiry in the past before touching the chain", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 1, address: CREATOR });
+    prisma.user.findUnique.mockResolvedValue({ id: 1, account_id: 10, account: { walletAddress: CREATOR } });
     getTransaction.mockResolvedValue(transferTx());
 
     await expect(
@@ -140,9 +141,14 @@ describe("createTask", () => {
   });
 
   it("creates the task and its options in one write", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 1, address: CREATOR });
+    prisma.user.findUnique.mockResolvedValue({ id: 1, account_id: 10, account: { walletAddress: CREATOR } });
     getTransaction.mockResolvedValue(transferTx());
-    prisma.task.create.mockResolvedValue({ id: 42, options: [] });
+    prisma.task.create.mockResolvedValue({
+      id: 42,
+      title: "Pick one",
+      amount: 100_000_000n,
+      options: [{ id: 1 }, { id: 2 }],
+    });
 
     await createTask(1, {
       options: [{ imageUrl: "a.jpg" }, { imageUrl: "b.jpg" }],

@@ -5,6 +5,7 @@ vi.mock("../../src/lib/prisma.js", () => ({
     task: { findUnique: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
     submission: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     worker: { update: vi.fn(), findUnique: vi.fn() },
+    auditLog: { create: vi.fn() },
     payouts: { findMany: vi.fn() },
     $transaction: vi.fn(),
   },

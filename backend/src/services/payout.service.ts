@@ -5,7 +5,8 @@ import { ESTIMATED_TX_FEE_LAMPORTS, MIN_WITHDRAWAL_LAMPORTS } from "../config/in
 import { prismaClient } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { getConnection, getPlatformKeypair, getPlatformWalletAddress, toSignatureBytes } from "../lib/solana.js";
-import { badRequest, notFound, serverError, unauthorized } from "../utils/errors.js";
+import { badRequest, forbidden, notFound, serverError, unauthorized } from "../utils/errors.js";
+import { AuditAction, auditAccount, type AuditContext } from "./audit.service.js";
 
 /**
  * Worker withdrawals.
@@ -31,7 +32,7 @@ export function buildWithdrawalMessage(lamports: bigint, address: string): strin
   return `Withdraw ${lamports} lamports to ${address}`;
 }
 
-function verifyWithdrawalSignature(worker: { address: string }, lamports: bigint, signature: unknown) {
+function verifyWithdrawalSignature(walletAddress: string, lamports: bigint, signature: unknown) {
   let signatureBytes: Uint8Array;
   try {
     signatureBytes = toSignatureBytes(signature);
@@ -39,19 +40,41 @@ function verifyWithdrawalSignature(worker: { address: string }, lamports: bigint
     throw badRequest("Invalid signature format", "INVALID_SIGNATURE_FORMAT");
   }
 
-  const message = new TextEncoder().encode(buildWithdrawalMessage(lamports, worker.address));
+  const message = new TextEncoder().encode(buildWithdrawalMessage(lamports, walletAddress));
   const verified = nacl.sign.detached.verify(
     message,
     signatureBytes,
-    new PublicKey(worker.address).toBytes(),
+    new PublicKey(walletAddress).toBytes(),
   );
 
   if (!verified) throw unauthorized("Invalid withdrawal signature", "INVALID_SIGNATURE");
 }
 
-export async function requestPayout(workerId: number, signature: unknown) {
-  const worker = await prismaClient.worker.findUnique({ where: { id: workerId } });
+export async function requestPayout(
+  workerId: number,
+  signature: unknown,
+  context?: AuditContext,
+) {
+  const worker = await prismaClient.worker.findUnique({
+    where: { id: workerId },
+    include: { account: { select: { id: true, walletAddress: true } } },
+  });
   if (!worker) throw notFound("Worker not found", "WORKER_NOT_FOUND");
+
+  /**
+   * The wallet gate.
+   *
+   * Accounts can sign up with just an email and earn by completing tasks, but
+   * SOL needs a destination. This is checked here as well as in middleware so
+   * the rule holds no matter which path reaches the service.
+   */
+  const walletAddress = worker.account.walletAddress;
+  if (!walletAddress) {
+    throw forbidden(
+      "Connect a Solana wallet before withdrawing — that is where your SOL will be sent.",
+      "WALLET_REQUIRED",
+    );
+  }
 
   const amount = worker.pending_amount;
 
@@ -69,7 +92,7 @@ export async function requestPayout(workerId: number, signature: unknown) {
 
   // The worker signs the exact amount, so a signature captured from one
   // withdrawal cannot authorise a later, larger one.
-  verifyWithdrawalSignature(worker, amount, signature);
+  verifyWithdrawalSignature(walletAddress, amount, signature);
 
   const connection = getConnection();
   const platformWallet = getPlatformWalletAddress();
@@ -97,6 +120,13 @@ export async function requestPayout(workerId: number, signature: unknown) {
     throw badRequest("Your balance changed, please retry the withdrawal", "BALANCE_CHANGED");
   }
 
+  await auditAccount(worker.account.id, AuditAction.PAYOUT_REQUESTED, {
+    entityType: "worker",
+    entityId: workerId,
+    metadata: { amountLamports: amount.toString(), destination: walletAddress },
+    context,
+  });
+
   let txSignature: string;
   try {
     const keypair = getPlatformKeypair();
@@ -109,7 +139,7 @@ export async function requestPayout(workerId: number, signature: unknown) {
     }).add(
       SystemProgram.transfer({
         fromPubkey: platformWallet,
-        toPubkey: new PublicKey(worker.address),
+        toPubkey: new PublicKey(walletAddress),
         lamports: Number(amount),
       }),
     );
@@ -138,6 +168,13 @@ export async function requestPayout(workerId: number, signature: unknown) {
       },
     });
 
+    await auditAccount(worker.account.id, AuditAction.PAYOUT_FAILED, {
+      entityType: "worker",
+      entityId: workerId,
+      metadata: { amountLamports: amount.toString(), error: message },
+      context,
+    });
+
     throw serverError(describeTransferFailure(message), "PAYOUT_FAILED");
   }
 
@@ -156,6 +193,17 @@ export async function requestPayout(workerId: number, signature: unknown) {
         status: PayoutStatus.SUCCESS,
       },
     });
+  });
+
+  await auditAccount(worker.account.id, AuditAction.PAYOUT_SUCCEEDED, {
+    entityType: "worker",
+    entityId: workerId,
+    metadata: {
+      amountLamports: amount.toString(),
+      destination: walletAddress,
+      txSignature,
+    },
+    context,
   });
 
   logger.info("Payout confirmed", { workerId, amount, signature: txSignature });

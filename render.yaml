@@ -36,13 +36,25 @@ services:
         sync: false
       - key: CLOUDFRONT_URL
         sync: false
-      # Creator tokens.
+      # User sessions. One token per person; roles resolve from profiles.
       - key: JWT_SECRET
         generateValue: true
-      # Worker tokens. Must be independently generated — a shared secret would
-      # let a creator token authenticate as a worker, and the previous code
-      # derived this value from the Express app object, making it guessable.
-      - key: WORKER_JWT_SECRET
+      # Admin sessions. Independently generated — a shared secret would let any
+      # user token be replayed against the admin API.
+      - key: ADMIN_JWT_SECRET
         generateValue: true
+      # Transactional email. Required in production: without it nobody can
+      # verify an address or recover an account.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      # Google sign-in. Optional — leave unset to disable the Google button.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
       - key: FRONTEND_URL
         sync: false
