@@ -17,6 +17,10 @@ export async function nextTask(req: Request, res: Response) {
   res.json(task);
 }
 
+export async function availableTasks(req: Request, res: Response) {
+  res.json({ tasks: await workers.listAvailableTasks(workerId(req)) });
+}
+
 export async function submit(req: Request, res: Response) {
   const { taskId, selection } = createSubmissionInput.parse(req.body);
   const id = workerId(req);

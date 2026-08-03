@@ -48,11 +48,12 @@ export const BuiltForEveryoneSection = () => {
             <p className="dojo-display text-[1.6rem]" style={{ color: "var(--slip)" }}>
               Answer a question,
               <br />
-              get 0.001 SOL.
+              get paid for it.
             </p>
             <p className="mt-4 text-[15px] leading-relaxed" style={{ color: "var(--paper-dim)" }}>
-              Each task takes a few seconds — look at some images, pick the best one. Your
-              balance goes up the moment you submit.
+              Each task takes a few seconds — look at some images, pick the best one. Every
+              task shows what it pays before you start, and your balance goes up the moment
+              you submit.
             </p>
 
             <div
@@ -60,7 +61,7 @@ export const BuiltForEveryoneSection = () => {
               style={{ borderColor: "var(--desk-line)", color: "var(--paper-dim)" }}
             >
               {[
-                ["per answer", "0.001 SOL"],
+                ["per answer", "set by the creator"],
                 ["minimum withdrawal", "0.001 SOL"],
                 ["wallet needed to", "withdraw only"],
               ].map(([label, value]) => (
@@ -82,11 +83,12 @@ export const BuiltForEveryoneSection = () => {
               If you need answers
             </p>
             <p className="dojo-display text-[1.35rem]" style={{ color: "var(--slip)" }}>
-              A hundred opinions for 0.1 SOL.
+              You set the budget.
             </p>
             <p className="mt-4 text-[14.5px] leading-relaxed" style={{ color: "var(--paper-dim)" }}>
-              Upload the options, fund once, watch the votes land. Which logo, which
-              thumbnail, which crop — the questions where you want a crowd, not a committee.
+              Top up once, then decide per task how much to put up and how many answers you
+              want. Which logo, which thumbnail, which crop — the questions where you want a
+              crowd, not a committee. Whatever goes unanswered comes back to you.
             </p>
 
             <ul className="mt-6 space-y-3">

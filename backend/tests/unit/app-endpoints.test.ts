@@ -272,6 +272,8 @@ describe("public share endpoint", () => {
       id: 1,
       title: "Pick the best logo",
       amount: 100_000_000n,
+      rewardPerSubmission: 1_000_000n,
+      maxSubmissions: 100,
       status: "OPEN",
       submissionCount: 10,
       expiresAt: null,

@@ -2,164 +2,301 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../src/lib/prisma.js", () => ({
   prismaClient: {
-    task: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    task: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
+    },
     user: { findUnique: vi.fn() },
     submission: { findMany: vi.fn() },
+    vault: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    vaultEntry: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     auditLog: { create: vi.fn() },
+    $transaction: vi.fn(),
   },
   connectDB: vi.fn(),
   disconnectDB: vi.fn(),
 }));
 
-const getTransaction = vi.fn();
-
-vi.mock("../../src/lib/solana.js", async () => {
-  const actual = await vi.importActual<typeof import("../../src/lib/solana.js")>(
-    "../../src/lib/solana.js",
-  );
-  return { ...actual, getConnection: () => ({ getTransaction }) };
-});
-
 const { prismaClient } = await import("../../src/lib/prisma.js");
-const { createTask, effectiveStatus, getPublicTask, verifyFundingTransaction } = await import(
-  "../../src/services/task.service.js"
-);
+const { cancelTask, createTask, effectiveStatus, getPublicTask, planBudget, quoteBudget } =
+  await import("../../src/services/task.service.js");
+const {
+  MIN_REWARD_PER_SUBMISSION_LAMPORTS,
+  MIN_TASK_BUDGET_LAMPORTS,
+  MAX_SUBMISSIONS_PER_TASK,
+} = await import("../../src/config/index.js");
 
 const prisma = prismaClient as any;
 
-const CREATOR = "8ZDbGsY7YJmSAvGHNRbnZQvfsyGgYw4mLUcQ6PPBpVHb";
-const PLATFORM = "FPDb9L6L3kyBiw8LeXCcdza85PbSNxcZujXNkPrwEont";
+const VAULT_ID = 77;
 
-/** Minimal shape of the pieces of a confirmed transfer the verifier inspects. */
-function transferTx({
-  credited = 100_000_000,
-  payer = CREATOR,
-  recipient = PLATFORM,
-  err = null as unknown,
-} = {}) {
-  const keys = [payer, recipient];
+/** Every field `serializeVault` reads, so a partial mock cannot mask a bug. */
+function vaultRow(overrides: Record<string, unknown> = {}) {
   return {
-    meta: {
-      err,
-      preBalances: [1_000_000_000, 0],
-      postBalances: [1_000_000_000 - credited, credited],
-    },
-    transaction: {
-      message: {
-        getAccountKeys: () => ({
-          length: keys.length,
-          get: (index: number) => (keys[index] ? { toString: () => keys[index] } : undefined),
-        }),
-      },
-    },
+    id: VAULT_ID,
+    account_id: 10,
+    available: 10_000_000_000n,
+    reserved: 0n,
+    totalDeposited: 10_000_000_000n,
+    totalWithdrawn: 0n,
+    totalSpent: 0n,
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
   };
+}
+
+/** Runs the callback against a transaction client backed by the same mocks. */
+function passthroughTransaction() {
+  prisma.$transaction.mockImplementation(async (fn: any) =>
+    fn({
+      task: prisma.task,
+      user: prisma.user,
+      vault: prisma.vault,
+      vaultEntry: prisma.vaultEntry,
+    }),
+  );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.task.findUnique.mockResolvedValue(null);
+  prisma.vault.findUnique.mockResolvedValue(vaultRow());
 });
 
-describe("verifyFundingTransaction", () => {
-  it("accepts a transfer of exactly the task price from the creator", async () => {
-    getTransaction.mockResolvedValue(transferTx());
-    await expect(verifyFundingTransaction("sig", CREATOR)).resolves.toBeUndefined();
+/**
+ * Budget arithmetic.
+ *
+ * This is the rule the whole economics rests on: a task must never be able to
+ * promise more than it reserves, in either direction.
+ */
+describe("planBudget", () => {
+  it("splits a divisible budget exactly", () => {
+    const plan = planBudget(100_000_000n, 100);
+
+    expect(plan.rewardPerSubmission).toBe(1_000_000n);
+    expect(plan.committed).toBe(100_000_000n);
+    expect(plan.remainder).toBe(0n);
   });
 
   /**
-   * Replay protection. Without the unique signature check, one 0.1 SOL payment
-   * could be submitted repeatedly to mint unlimited tasks.
+   * The invariant that makes refunds a subtraction rather than a
+   * reconciliation: what is reserved is exactly what workers can still claim.
    */
-  it("rejects a signature that already funded a task", async () => {
-    prisma.task.findUnique.mockResolvedValue({ id: 1, signature: "sig" });
-
-    await expect(verifyFundingTransaction("sig", CREATOR)).rejects.toMatchObject({
-      code: "SIGNATURE_ALREADY_USED",
-    });
-    expect(getTransaction).not.toHaveBeenCalled();
+  it("never reserves more than the slots can pay out", () => {
+    for (const [budget, slots] of [
+      [100_000_000n, 30],
+      [333_333_333n, 7],
+      [10_000_000n, 9],
+      [999_999_999n, 999],
+    ] as Array<[bigint, number]>) {
+      const plan = planBudget(budget, slots);
+      expect(plan.rewardPerSubmission * BigInt(slots)).toBe(plan.committed);
+      expect(plan.committed).toBeLessThanOrEqual(budget);
+      expect(plan.remainder).toBeLessThan(BigInt(slots));
+    }
   });
 
-  /** The old verifier never inspected `meta.err`. */
-  it("rejects a transaction that failed on chain", async () => {
-    getTransaction.mockResolvedValue(transferTx({ err: { InstructionError: [0, "Custom"] } }));
-    await expect(verifyFundingTransaction("sig", CREATOR)).rejects.toMatchObject({
-      code: "TX_FAILED",
-    });
+  it("leaves the indivisible remainder in the vault rather than stranding it", () => {
+    const plan = planBudget(100_000_000n, 30);
+
+    expect(plan.rewardPerSubmission).toBe(3_333_333n);
+    expect(plan.committed).toBe(99_999_990n);
+    expect(plan.remainder).toBe(10n);
   });
 
-  it("rejects an underpayment", async () => {
-    getTransaction.mockResolvedValue(transferTx({ credited: 50_000_000 }));
-    await expect(verifyFundingTransaction("sig", CREATOR)).rejects.toMatchObject({
-      code: "WRONG_AMOUNT",
-    });
+  it("rejects a budget below the floor", () => {
+    expect(() => planBudget(MIN_TASK_BUDGET_LAMPORTS - 1n, 10)).toThrowError(
+      expect.objectContaining({ code: "BUDGET_TOO_SMALL" }),
+    );
   });
 
-  it("rejects an overpayment", async () => {
-    getTransaction.mockResolvedValue(transferTx({ credited: 200_000_000 }));
-    await expect(verifyFundingTransaction("sig", CREATOR)).rejects.toMatchObject({
-      code: "WRONG_AMOUNT",
-    });
+  /** Guards the other end: a legal budget spread so thin each answer pays dust. */
+  it("rejects a reward below the per-submission floor", () => {
+    expect(() => planBudget(MIN_TASK_BUDGET_LAMPORTS, MAX_SUBMISSIONS_PER_TASK)).toThrowError(
+      expect.objectContaining({ code: "REWARD_TOO_SMALL" }),
+    );
   });
 
-  it("rejects a transfer that never touches the platform wallet", async () => {
-    getTransaction.mockResolvedValue(transferTx({ recipient: CREATOR }));
-    await expect(verifyFundingTransaction("sig", CREATOR)).rejects.toMatchObject({
-      code: "WRONG_RECIPIENT",
-    });
+  it("rejects a slot count outside the permitted range", () => {
+    expect(() => planBudget(100_000_000n, 1)).toThrowError(
+      expect.objectContaining({ code: "INVALID_SUBMISSION_COUNT" }),
+    );
+    expect(() => planBudget(100_000_000_000n, MAX_SUBMISSIONS_PER_TASK + 1)).toThrowError(
+      expect.objectContaining({ code: "INVALID_SUBMISSION_COUNT" }),
+    );
   });
 
-  it("rejects a transfer paid by somebody else's wallet", async () => {
-    getTransaction.mockResolvedValue(transferTx());
-    await expect(verifyFundingTransaction("sig", "SomeOtherWalletAddress1111111111111111111")).rejects.toMatchObject({
-      code: "WRONG_PAYER",
-    });
+  it("accepts a reward exactly at the floor", () => {
+    const slots = 10;
+    const plan = planBudget(MIN_REWARD_PER_SUBMISSION_LAMPORTS * BigInt(slots) * 10n, slots);
+    expect(plan.rewardPerSubmission).toBeGreaterThanOrEqual(MIN_REWARD_PER_SUBMISSION_LAMPORTS);
   });
+});
 
-  it("gives up after retrying a transaction that never appears", async () => {
-    getTransaction.mockResolvedValue(null);
-    await expect(verifyFundingTransaction("sig", CREATOR)).rejects.toMatchObject({
-      code: "TX_NOT_FOUND",
-    });
-    expect(getTransaction.mock.calls.length).toBeGreaterThan(1);
+describe("quoteBudget", () => {
+  /**
+   * The composer renders these strings directly, so a quote that disagreed with
+   * what `createTask` reserves would show a creator one reward and pay another.
+   */
+  it("returns the same arithmetic the creation path uses, as strings", () => {
+    const quote = quoteBudget(100_000_000n, 30);
+    const plan = planBudget(100_000_000n, 30);
+
+    expect(quote.rewardPerSubmission).toBe(plan.rewardPerSubmission.toString());
+    expect(quote.committed).toBe(plan.committed.toString());
+    expect(quote.remainder).toBe(plan.remainder.toString());
   });
 });
 
 describe("createTask", () => {
-  it("rejects an expiry in the past before touching the chain", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 1, account_id: 10, account: { walletAddress: CREATOR } });
-    getTransaction.mockResolvedValue(transferTx());
+  function creatorExists() {
+    prisma.user.findUnique.mockResolvedValue({ id: 1, account_id: 10 });
+  }
+
+  it("rejects an expiry in the past before reserving anything", async () => {
+    creatorExists();
 
     await expect(
       createTask(1, {
         options: [{ imageUrl: "a.jpg" }, { imageUrl: "b.jpg" }],
-        signature: "sig",
+        budgetLamports: "100000000",
+        maxSubmissions: 100,
         expirationDate: new Date(Date.now() - 60_000).toISOString(),
       }),
     ).rejects.toMatchObject({ code: "EXPIRY_IN_PAST" });
 
     expect(prisma.task.create).not.toHaveBeenCalled();
+    expect(prisma.vault.updateMany).not.toHaveBeenCalled();
   });
 
-  it("creates the task and its options in one write", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 1, account_id: 10, account: { walletAddress: CREATOR } });
-    getTransaction.mockResolvedValue(transferTx());
+  it("rejects an invalid budget before reserving anything", async () => {
+    creatorExists();
+
+    await expect(
+      createTask(1, {
+        options: [{ imageUrl: "a.jpg" }, { imageUrl: "b.jpg" }],
+        budgetLamports: "1",
+        maxSubmissions: 100,
+      }),
+    ).rejects.toMatchObject({ code: "BUDGET_TOO_SMALL" });
+
+    expect(prisma.task.create).not.toHaveBeenCalled();
+  });
+
+  it("stores the reward and slot count on the task and reserves the exact total", async () => {
+    creatorExists();
     prisma.task.create.mockResolvedValue({
       id: 42,
       title: "Pick one",
-      amount: 100_000_000n,
+      amount: 500_000_000n,
+      rewardPerSubmission: 10_000_000n,
+      maxSubmissions: 50,
       options: [{ id: 1 }, { id: 2 }],
     });
+    prisma.vault.updateMany.mockResolvedValue({ count: 1 });
+    prisma.vault.findUniqueOrThrow.mockResolvedValue(
+      vaultRow({ available: 9_500_000_000n, reserved: 500_000_000n }),
+    );
+    passthroughTransaction();
 
     await createTask(1, {
       options: [{ imageUrl: "a.jpg" }, { imageUrl: "b.jpg" }],
-      signature: "sig",
+      budgetLamports: "500000000",
+      maxSubmissions: 50,
       title: "Pick one",
     });
 
     const data = prisma.task.create.mock.calls[0][0].data;
-    expect(data.amount).toBe(100_000_000n);
-    expect(data.signature).toBe("sig");
+    expect(data.amount).toBe(500_000_000n);
+    expect(data.rewardPerSubmission).toBe(10_000_000n);
+    expect(data.maxSubmissions).toBe(50);
+    expect(data.vaultFunded).toBe(true);
     expect(data.options.create).toEqual([{ image_url: "a.jpg" }, { image_url: "b.jpg" }]);
+
+    // Exactly what the slots can pay out — no more, no less.
+    expect(prisma.vault.updateMany).toHaveBeenCalledWith({
+      where: { id: VAULT_ID, available: { gte: 500_000_000n } },
+      data: { available: { decrement: 500_000_000n }, reserved: { increment: 500_000_000n } },
+    });
+  });
+
+  /**
+   * The conditional `available >= amount` is what makes two concurrent creations
+   * unable to spend the same balance twice.
+   */
+  it("refuses to create the task when the vault cannot cover it", async () => {
+    creatorExists();
+    prisma.task.create.mockResolvedValue({
+      id: 42,
+      title: "t",
+      amount: 0n,
+      rewardPerSubmission: 0n,
+      maxSubmissions: 50,
+      options: [],
+    });
+    prisma.vault.updateMany.mockResolvedValue({ count: 0 });
+    prisma.vault.findUnique.mockResolvedValue(vaultRow({ available: 1_000n }));
+    passthroughTransaction();
+
+    await expect(
+      createTask(1, {
+        options: [{ imageUrl: "a.jpg" }, { imageUrl: "b.jpg" }],
+        budgetLamports: "500000000",
+        maxSubmissions: 50,
+      }),
+    ).rejects.toMatchObject({ code: "INSUFFICIENT_VAULT_BALANCE" });
+  });
+});
+
+describe("cancelTask", () => {
+  it("returns only the unfilled slots, leaving accepted work paid for", async () => {
+    prisma.task.findFirst.mockResolvedValue({
+      id: 1,
+      title: "Pick one",
+      user_id: 1,
+      status: "OPEN",
+      submissionCount: 30,
+      user: { account_id: 10 },
+    });
+    prisma.task.updateMany.mockResolvedValue({ count: 1 });
+    prisma.task.findUniqueOrThrow.mockResolvedValue({
+      id: 1,
+      title: "Pick one",
+      user_id: 1,
+      vaultFunded: true,
+      rewardPerSubmission: 1_000_000n,
+      maxSubmissions: 100,
+      submissionCount: 30,
+      refundedAmount: 0n,
+    });
+    prisma.user.findUnique.mockResolvedValue({ account: { vault: { id: VAULT_ID } } });
+    prisma.vault.update.mockResolvedValue(vaultRow({ available: 70_000_000n }));
+    passthroughTransaction();
+
+    const result = await cancelTask(1, 1);
+
+    // 70 unfilled slots × 0.001 SOL.
+    expect(result.refunded).toBe("70000000");
+    expect(prisma.task.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { refundedAmount: { increment: 70_000_000n } },
+    });
+  });
+
+  it("refuses to close a task that is already closed", async () => {
+    prisma.task.findFirst.mockResolvedValue({
+      id: 1,
+      status: "COMPLETED",
+      user: { account_id: 10 },
+    });
+
+    await expect(cancelTask(1, 1)).rejects.toMatchObject({ code: "TASK_NOT_OPEN" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
 
@@ -189,6 +326,8 @@ describe("getPublicTask", () => {
       id: 1,
       title: "Pick one",
       amount: 100_000_000n,
+      rewardPerSubmission: 1_000_000n,
+      maxSubmissions: 100,
       status: "OPEN",
       submissionCount: 40,
       expiresAt: null,
@@ -204,5 +343,24 @@ describe("getPublicTask", () => {
       isOpen: true,
     });
     expect(JSON.stringify(task)).not.toContain("worker");
+  });
+
+  it("reports the task's own reward rather than deriving one", async () => {
+    prisma.task.findUnique.mockResolvedValue({
+      id: 2,
+      title: "Pick one",
+      amount: 100_000_000n,
+      rewardPerSubmission: 20_000_000n,
+      maxSubmissions: 5,
+      status: "OPEN",
+      submissionCount: 1,
+      expiresAt: null,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      options: [],
+    });
+
+    const task = await getPublicTask(2);
+    expect(task.rewardLamports).toBe("20000000");
+    expect(task.spotsRemaining).toBe(4);
   });
 });

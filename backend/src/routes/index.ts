@@ -4,6 +4,7 @@ import adminRoutes from "./admin.routes.js";
 import authRoutes from "./auth.routes.js";
 import publicRoutes from "./public.routes.js";
 import userRoutes from "./user.routes.js";
+import vaultRoutes from "./vault.routes.js";
 import workerRoutes from "./worker.routes.js";
 
 const router = Router();
@@ -11,6 +12,7 @@ const router = Router();
 router.use("/auth", authRoutes);
 router.use("/user", userRoutes);
 router.use("/worker", workerRoutes);
+router.use("/vault", vaultRoutes);
 router.use("/public", publicRoutes);
 
 /**

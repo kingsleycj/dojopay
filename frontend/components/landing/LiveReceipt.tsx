@@ -6,20 +6,23 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
  * The page's signature element: one task's ledger, settling.
  *
  * Why this and not a hero graphic — DojoPay's economics are a closed sum. A
- * task is funded with 0.1 SOL and sold in exactly 100 slots at 0.001 SOL each,
- * so a correct ledger always reconciles to zero remaining. That arithmetic is
- * the product's actual claim to trustworthiness right now (the submission cap
- * is enforced race-safely, per CLAUDE.md Phase 3), and it is more persuasive
- * demonstrated than asserted.
+ * creator commits a budget across a chosen number of slots, and the reward per
+ * slot is the budget divided by that count, so a correct ledger always
+ * reconciles to zero remaining. That arithmetic is the product's actual claim to
+ * trustworthiness right now (the submission cap is enforced race-safely, per
+ * CLAUDE.md Phase 3), and it is more persuasive demonstrated than asserted.
  *
- * Every number here is derived from the real constants, never hardcoded prose,
- * so the demo cannot drift away from what the backend actually does.
+ * The figures below are **one example** — 0.5 SOL over 50 answers — not fixed
+ * platform pricing, which creators now set per task. What is not illustrative is
+ * the relationship between them: the reward is derived here exactly as
+ * `planBudget` derives it on the server, so the demo cannot show a split the
+ * backend would not actually produce.
  */
 
 const LAMPORTS_PER_SOL = 1_000_000_000;
-const TASK_PRICE_LAMPORTS = 100_000_000; // 0.1 SOL
-const MAX_SUBMISSIONS = 100;
-const REWARD_LAMPORTS = TASK_PRICE_LAMPORTS / MAX_SUBMISSIONS; // 0.001 SOL
+const TASK_PRICE_LAMPORTS = 500_000_000; // 0.5 SOL — one creator's choice, not a fixed price
+const MAX_SUBMISSIONS = 50;
+const REWARD_LAMPORTS = Math.floor(TASK_PRICE_LAMPORTS / MAX_SUBMISSIONS); // 0.01 SOL
 
 /** Rows visible in the printed window at once. */
 const WINDOW = 6;
@@ -133,8 +136,8 @@ export function LiveReceipt() {
   return (
     <figure className="relative mx-auto w-full max-w-[26rem]">
       <figcaption className="sr-only">
-        A live illustration of one DojoPay task settling: 100 submission slots at 0.001 SOL
-        each, totalling the 0.1 SOL the task was funded with.
+        A live illustration of one DojoPay task settling: an example budget of 0.5 SOL
+        split across 50 answers at 0.01 SOL each, reconciling to nothing remaining.
       </figcaption>
 
       {/* Receipt */}

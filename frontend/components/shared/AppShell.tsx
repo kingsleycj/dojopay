@@ -1,124 +1,143 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CreatorSidebar } from "@/components/CreatorSidebar";
-import { WorkerSidebar } from "@/components/WorkerSidebar";
-import { ApplicationFooter } from "@/components/ApplicationFooter";
-import { ToastContainer } from "@/components/Toast";
 import Link from "next/link";
-import { useAuth } from "@/lib/auth";
-import { workerEndpoints, type WorkerBalance } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { LogOut, Menu, Wallet, X } from "lucide-react";
+import { ToastContainer } from "@/components/Toast";
+import { Sol } from "@/components/ui-kit";
+import { cn } from "@/components/lib/utils";
 import { useWithdrawal } from "@/hooks/useWithdrawal";
-import { lamportsToSol } from "@/utils/convert";
+import { useAuth, type Mode } from "@/lib/auth";
+import { vaultEndpoints, workerEndpoints, type Vault, type WorkerBalance } from "@/lib/api";
+import { ModeSwitcher } from "./ModeSwitcher";
+import { SideNav } from "./SideNav";
 
 /**
- * The chrome around every signed-in page: top bar, role sidebar, footer.
+ * The chrome around every signed-in page.
  *
- * Three near-identical `WorkerAppbar` components were previously defined inline
- * inside `app/worker/dashboard`, `app/worker/tasks` and `components/Appbar`,
- * each fetching the balance slightly differently. This is the one of them.
+ * `data-mode` on the root is what drives the accent colour for everything
+ * inside — see the `--mode-accent` block in globals.css. That is the whole
+ * mechanism: no component below needs to know which mode is active, and the
+ * colour change on switch happens in one place.
+ *
+ * The balance chip shows a *different number per mode* on purpose. A worker's
+ * pending earnings and a creator's vault are separate balances that happen to
+ * belong to the same person, and showing whichever is not relevant to the
+ * current task is how someone ends up trying to fund a task out of money they
+ * earned but have not withdrawn.
  */
 
-type CreatorView = "dashboard" | "tasks" | "create" | "earnings";
-type WorkerView = "dashboard" | "tasks" | "earnings";
-
-interface AppShellProps {
-  role: "creator" | "worker";
-  activeView: CreatorView | WorkerView;
+export function AppShell({
+  role,
+  children,
+}: {
+  role: Mode;
+  /** Legacy prop from the previous shell; the nav derives this from the URL now. */
+  activeView?: string;
   children: React.ReactNode;
-}
-
-export function AppShell({ role, activeView, children }: AppShellProps) {
-  const { account, signOut, mode, setMode } = useAuth();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+}) {
+  const { account, signOut } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [balance, setBalance] = useState<WorkerBalance | null>(null);
+  const [vault, setVault] = useState<Vault | null>(null);
 
-  const loadBalance = useCallback(async () => {
-    if (role !== "worker") return;
-    try {
-      setBalance(await workerEndpoints.balance());
-    } catch {
-      // Non-fatal: the balance chip simply stays hidden.
+  const loadBalances = useCallback(async () => {
+    // Both are best-effort: the chip disappearing is a far better failure than
+    // the whole shell erroring out around a working page.
+    if (role === "worker") {
+      try {
+        setBalance(await workerEndpoints.balance());
+      } catch {
+        setBalance(null);
+      }
+    } else {
+      try {
+        setVault(await vaultEndpoints.summary());
+      } catch {
+        setVault(null);
+      }
     }
   }, [role]);
 
-  const { withdraw, isWithdrawing } = useWithdrawal(loadBalance);
+  const { withdraw, isWithdrawing } = useWithdrawal(loadBalances);
 
   useEffect(() => {
-    void loadBalance();
-    if (role !== "worker") return;
-
-    const interval = setInterval(loadBalance, 30_000);
+    void loadBalances();
+    const interval = setInterval(loadBalances, 30_000);
     return () => clearInterval(interval);
-  }, [loadBalance, role]);
+  }, [loadBalances]);
+
+  // A route change should close the drawer; leaving it open over the new page
+  // is the most common mobile-nav bug there is.
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   const pending = balance?.pendingAmount ?? "0";
   const hasPending = pending !== "0";
   const needsWallet = Boolean(account && !account.walletAddress);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div data-mode={role} className="flex min-h-screen flex-col bg-background">
       <ToastContainer />
 
-      <header className="flex justify-between items-center gap-2 border-b px-3 py-2 fixed top-0 inset-x-0 bg-white z-50">
-        <div className="flex items-center gap-2 min-w-0">
+      <header className="fixed inset-x-0 top-0 z-50 flex h-16 items-center justify-between gap-2 border-b border-border bg-card/95 px-3 backdrop-blur sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
           <button
-            onClick={() => setMobileMenuOpen((open) => !open)}
-            className="lg:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100"
-            aria-label="Toggle navigation"
-            aria-expanded={mobileMenuOpen}
+            onClick={() => setMobileOpen((open) => !open)}
+            className="app-focus-ring rounded-lg p-2 text-muted-foreground hover:bg-muted lg:hidden"
+            aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={mobileOpen}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d={mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"}
-              />
-            </svg>
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <span className="font-bold text-lg truncate">DojoPay</span>
+
+          <Link href={`/${role}/dashboard`} className="app-focus-ring flex items-center gap-2 rounded-lg px-1">
+            <span className="text-lg font-bold tracking-tight">DojoPay</span>
+            <span className="hidden rounded-full bg-accent-mode-soft px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wider text-accent-mode sm:inline">
+              {role === "creator" ? "Creator" : "Worker"}
+            </span>
+          </Link>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <ModeSwitcher className="hidden sm:inline-flex" />
+
+          {/* Worker: pending earnings, with a one-click withdrawal. */}
           {role === "worker" && hasPending && !needsWallet && (
-            <div className="hidden sm:flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-1.5">
-              <span className="text-xs text-green-800 font-medium">
-                {lamportsToSol(pending)} SOL
-              </span>
+            <div className="hidden items-center gap-2 rounded-lg border border-border bg-accent-mode-soft px-3 py-1.5 md:flex">
+              <Sol lamports={pending} decimals={4} className="text-xs font-semibold text-accent-mode" />
               <button
                 onClick={() => withdraw(pending)}
                 disabled={isWithdrawing}
-                className="text-xs font-semibold text-white bg-[#f97316] hover:bg-[#ea580c] disabled:opacity-50 rounded px-2 py-1"
+                className="app-focus-ring rounded px-2 py-0.5 text-xs font-semibold text-accent-mode hover:bg-card disabled:opacity-50"
               >
                 {isWithdrawing ? "Withdrawing…" : "Withdraw"}
               </button>
             </div>
           )}
 
-          {/* One account covers both modes, so switching is a view toggle
-              rather than a second sign-in. */}
-          <button
-            onClick={() => {
-              const next = mode === "worker" ? "creator" : "worker";
-              setMode(next);
-              window.location.href = `/${next}/dashboard`;
-            }}
-            className="hidden sm:inline-flex text-xs rounded-lg border border-gray-200 px-3 py-1.5 text-gray-700 hover:bg-gray-50"
-          >
-            Switch to {mode === "worker" ? "creator" : "worker"}
-          </button>
+          {/* Creator: vault balance, linking to the top-up flow. */}
+          {role === "creator" && vault && (
+            <Link
+              href="/creator/vault"
+              className="app-focus-ring hidden items-center gap-2 rounded-lg border border-border bg-accent-mode-soft px-3 py-1.5 text-xs font-semibold text-accent-mode hover:bg-card md:flex"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              <Sol lamports={vault.available} decimals={4} />
+              <span className="font-normal opacity-70">available</span>
+            </Link>
+          )}
 
           <Link
             href="/settings"
-            className="relative text-xs rounded-lg border border-gray-200 px-3 py-1.5 text-gray-700 hover:bg-gray-50"
+            className="app-focus-ring relative flex h-9 w-9 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground hover:bg-accent-mode-soft hover:text-accent-mode"
+            aria-label="Settings"
           >
-            Settings
-            {/* A worker who cannot be paid should see that at all times, not
-                only when they try to withdraw. */}
+            {initials(account?.displayName ?? account?.email ?? "?")}
+            {/* Someone who cannot be paid should see that at all times, not only
+                at the moment they try to cash out. */}
             {needsWallet && (
               <span
-                className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500"
+                className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-amber-500"
                 aria-label="Action needed"
               />
             )}
@@ -126,42 +145,40 @@ export function AppShell({ role, activeView, children }: AppShellProps) {
 
           <button
             onClick={signOut}
-            className="text-xs rounded-lg border border-gray-200 px-3 py-1.5 text-gray-700 hover:bg-gray-50"
+            className="app-focus-ring rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Sign out"
           >
-            Sign out
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </header>
 
       {needsWallet && (
-        <div className="fixed inset-x-0 top-14 z-40 bg-amber-50 border-b border-amber-200 px-4 py-2 text-center text-xs text-amber-900">
-          Connect a Solana wallet to withdraw your earnings.{" "}
-          <Link href="/settings" className="font-semibold underline">
+        <div className="fixed inset-x-0 top-16 z-40 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
+          Connect a Solana wallet to {role === "creator" ? "top up your vault" : "withdraw your earnings"}.{" "}
+          <Link href="/settings" className="font-semibold underline underline-offset-2">
             Set it up
           </Link>
         </div>
       )}
 
-      <div className={needsWallet ? "flex-grow pt-24" : "flex-grow pt-16"}>
-        <div className="flex flex-col lg:flex-row">
-          {role === "worker" ? (
-            <WorkerSidebar
-              activeView={activeView as WorkerView}
-              mobileMenuOpen={mobileMenuOpen}
-              onMobileMenuClose={() => setMobileMenuOpen(false)}
-            />
-          ) : (
-            <CreatorSidebar
-              activeView={activeView as CreatorView}
-              mobileMenuOpen={mobileMenuOpen}
-              onMobileMenuClose={() => setMobileMenuOpen(false)}
-            />
-          )}
-          <main className="flex-grow lg:ml-64 min-w-0">{children}</main>
-        </div>
-      </div>
+      <SideNav mode={role} mobileOpen={mobileOpen} onNavigate={closeMobile} />
 
-      <ApplicationFooter />
+      <main className={cn("flex-1 lg:pl-60", needsWallet ? "pt-[6.25rem]" : "pt-16")}>
+        {children}
+      </main>
     </div>
   );
+}
+
+/** Up to two initials for the account chip. Falls back to a single character. */
+function initials(source: string): string {
+  const cleaned = source.trim();
+  if (!cleaned) return "?";
+
+  const words = cleaned.split(/[\s@._-]+/).filter(Boolean);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return cleaned.slice(0, 2).toUpperCase();
 }

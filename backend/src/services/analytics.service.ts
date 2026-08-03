@@ -1,7 +1,7 @@
 import { PayoutStatus, TaskStatus } from "@prisma/client";
-import { MAX_SUBMISSIONS_PER_TASK } from "../config/index.js";
 import { prismaClient } from "../lib/prisma.js";
 import { effectiveStatus } from "./task.service.js";
+import { ensureVault, serializeVault } from "./vault.service.js";
 
 /**
  * Creator analytics.
@@ -37,17 +37,38 @@ function bucketByDay<T>(items: T[], getDate: (item: T) => Date, days: number) {
 }
 
 export async function getCreatorDashboard(userId: number) {
-  const tasks = await prismaClient.task.findMany({
-    where: { user_id: userId },
-    include: { submissions: { select: { id: true, createdAt: true, amount: true } } },
-    orderBy: { createdAt: "desc" },
+  const creator = await prismaClient.user.findUnique({
+    where: { id: userId },
+    select: { account_id: true },
   });
+
+  const [tasks, vault] = await Promise.all([
+    prismaClient.task.findMany({
+      where: { user_id: userId },
+      include: { submissions: { select: { id: true, createdAt: true, amount: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    creator ? ensureVault(creator.account_id) : null,
+  ]);
 
   const allSubmissions = tasks.flatMap((task) => task.submissions);
 
   const totalTasks = tasks.length;
   const totalSubmissions = allSubmissions.length;
-  const totalSpent = tasks.reduce((sum, task) => sum + task.amount, 0n);
+  const totalCommitted = tasks.reduce((sum, task) => sum + task.amount, 0n);
+  const totalRefunded = tasks.reduce((sum, task) => sum + task.refundedAmount, 0n);
+
+  /**
+   * What the creator has actually parted with.
+   *
+   * Committing a budget is not the same as spending it now that unfilled slots
+   * come back — this used to sum `task.amount` and call it "total spent", which
+   * overstated the bill for every task that expired half-full.
+   */
+  const totalSpent = totalCommitted - totalRefunded;
+
+  /** Purchased capacity, summed per task rather than assuming a global cap. */
+  const totalCapacity = tasks.reduce((sum, task) => sum + task.maxSubmissions, 0);
 
   const statuses = tasks.map(effectiveStatus);
   const completedTasks = statuses.filter((status) => status === TaskStatus.COMPLETED).length;
@@ -90,41 +111,42 @@ export async function getCreatorDashboard(userId: number) {
     const monthsAgo = 11 - index;
     const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
     const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1);
+    const monthTasks = tasks.filter((task) => task.createdAt >= start && task.createdAt < end);
 
     return {
       month: start.toLocaleString("en-US", { month: "short", year: "numeric" }),
-      tasksCreated: tasks.filter((task) => task.createdAt >= start && task.createdAt < end).length,
+      tasksCreated: monthTasks.length,
       submissionsReceived: allSubmissions.filter((s) => s.createdAt >= start && s.createdAt < end).length,
+      // Capacity actually bought that month, not `tasks × a global constant`.
+      capacity: monthTasks.reduce((sum, task) => sum + task.maxSubmissions, 0),
     };
   });
 
-  const completionTrend = monthlyStats.map((stat) => {
-    const monthTasks = stat.tasksCreated;
-    return {
-      period: stat.month,
-      // Fill rate: how much of the purchased capacity was actually used.
-      completionRate:
-        monthTasks > 0
-          ? Math.min(100, (stat.submissionsReceived / (monthTasks * MAX_SUBMISSIONS_PER_TASK)) * 100)
-          : 0,
-    };
-  });
+  const completionTrend = monthlyStats.map((stat) => ({
+    period: stat.month,
+    // Fill rate: how much of the purchased capacity was actually used.
+    completionRate:
+      stat.capacity > 0 ? Math.min(100, (stat.submissionsReceived / stat.capacity) * 100) : 0,
+  }));
 
   return {
     overview: {
       totalTasks,
       totalSubmissions,
       totalSpent: totalSpent.toString(),
+      /** Everything ever committed, including budget that later came back. */
+      totalCommitted: totalCommitted.toString(),
+      /** Unfilled slots returned to the vault. */
+      totalRefunded: totalRefunded.toString(),
       totalPayouts: distributedToWorkers.toString(),
       completedTasks,
       pendingTasks,
       expiredTasks,
       averageSubmissionsPerTask: totalTasks > 0 ? (totalSubmissions / totalTasks).toFixed(2) : "0",
       capacityUtilisation:
-        totalTasks > 0
-          ? ((totalSubmissions / (totalTasks * MAX_SUBMISSIONS_PER_TASK)) * 100).toFixed(1)
-          : "0",
+        totalCapacity > 0 ? ((totalSubmissions / totalCapacity) * 100).toFixed(1) : "0",
     },
+    vault: vault ? serializeVault(vault) : null,
     dailyStats,
     weeklyStats,
     monthlyStats,
@@ -136,7 +158,9 @@ export async function getCreatorDashboard(userId: number) {
       createdAt: task.createdAt.toISOString(),
       expiresAt: task.expiresAt?.toISOString() ?? null,
       amount: task.amount.toString(),
+      rewardPerSubmission: task.rewardPerSubmission.toString(),
       submissions: task.submissionCount,
+      maxSubmissions: task.maxSubmissions,
     })),
   };
 }
@@ -151,7 +175,9 @@ export async function getCreatorEarnings(userId: number) {
   });
 
   const totalTasks = tasks.length;
-  const totalSpent = tasks.reduce((sum, task) => sum + task.amount, 0n);
+  const totalCommitted = tasks.reduce((sum, task) => sum + task.amount, 0n);
+  const totalRefunded = tasks.reduce((sum, task) => sum + task.refundedAmount, 0n);
+  const totalSpent = totalCommitted - totalRefunded;
   const statuses = tasks.map(effectiveStatus);
   const completedTasks = statuses.filter((status) => status === TaskStatus.COMPLETED).length;
   const pendingTasks = statuses.filter((status) => status === TaskStatus.OPEN).length;
@@ -200,7 +226,7 @@ export async function getCreatorEarnings(userId: number) {
   const spentSince = (since: number) =>
     tasks
       .filter((task) => task.createdAt.getTime() >= since)
-      .reduce((sum, task) => sum + task.amount, 0n)
+      .reduce((sum, task) => sum + task.amount - task.refundedAmount, 0n)
       .toString();
 
   const now = Date.now();

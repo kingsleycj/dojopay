@@ -42,6 +42,19 @@ export const prismaClient = baseClient.$extends({
   },
 });
 
+/**
+ * The client handed to an interactive `$transaction` callback.
+ *
+ * Not `Prisma.TransactionClient`: that describes an *unextended* client, and
+ * `prismaClient` carries the retry extension above, so the two are structurally
+ * incompatible. Services that take a `tx` parameter must use this type or they
+ * will not accept the very client Prisma passes them.
+ */
+export type PrismaTx = Omit<
+  typeof prismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
+
 export async function connectDB(retries = 8): Promise<void> {
   while (retries > 0) {
     try {

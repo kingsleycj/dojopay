@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../src/lib/prisma.js", () => ({
   prismaClient: {
-    account: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    account: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     verificationToken: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     user: { findUnique: vi.fn(), create: vi.fn() },
     worker: { findUnique: vi.fn(), create: vi.fn() },
@@ -20,6 +20,9 @@ vi.mock("../../src/lib/mailer.js", () => ({
   }),
   sendPasswordResetEmail: vi.fn(async (to: string) => {
     sentEmails.push({ to, subject: "reset" });
+  }),
+  sendWelcomeEmail: vi.fn(async (to: string) => {
+    sentEmails.push({ to, subject: "welcome" });
   }),
   sendAccountSuspendedEmail: vi.fn(),
   getMailer: vi.fn(),
@@ -50,6 +53,12 @@ function account(overrides: Record<string, unknown> = {}) {
     walletAddress: null,
     walletLinkedAt: null,
     signupProvider: "EMAIL",
+    welcomeEmailSentAt: null,
+    defaultMode: "WORKER",
+    notifyTaskActivity: true,
+    notifyPayouts: true,
+    notifyProductNews: false,
+    lastLoginAt: null,
     status: "ACTIVE",
     statusReason: null,
     referredBy: null,
@@ -378,5 +387,113 @@ describe("role profiles", () => {
     await accounts.ensureCreatorProfile(1);
 
     expect(prisma.user.create).toHaveBeenCalledWith({ data: { account_id: 1 } });
+  });
+});
+
+/**
+ * The welcome email.
+ *
+ * Deliberately not sent alongside the verification link — two emails at once is
+ * noise, and "here is how DojoPay works" is worthless to someone who has not
+ * finished signing up. It lands when the account first has an address it has
+ * proven it controls, and exactly once, ever.
+ */
+describe("welcome email", () => {
+  beforeEach(() => {
+    sentEmails.length = 0;
+    prisma.account.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("is not sent at email registration, only the verification link is", async () => {
+    prisma.account.findUnique.mockResolvedValue(null);
+    prisma.account.create.mockResolvedValue(account({ emailVerified: false }));
+
+    await accounts.registerWithEmail({
+      email: "new@example.com",
+      password: "correct-horse-battery",
+    });
+
+    expect(sentEmails.map((email) => email.subject)).toEqual(["verify"]);
+  });
+
+  it("is sent once verification completes", async () => {
+    prisma.verificationToken.findUnique.mockResolvedValue({
+      id: 1,
+      account_id: 1,
+      type: "EMAIL_VERIFICATION",
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    prisma.account.findUnique.mockResolvedValue({
+      email: "worker@example.com",
+      displayName: "Worker",
+      walletAddress: null,
+    });
+
+    await accounts.verifyEmail("token");
+
+    expect(sentEmails).toContainEqual({ to: "worker@example.com", subject: "welcome" });
+  });
+
+  /**
+   * Google has already verified the address, so there is no link to wait for.
+   */
+  it("is sent immediately for a new Google account", async () => {
+    // Lookup by googleId, then by email, then the welcome-send re-read.
+    prisma.account.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        email: "g@example.com",
+        displayName: "G",
+        walletAddress: null,
+      });
+    prisma.account.create.mockResolvedValue(account({ email: "g@example.com" }));
+
+    await accounts.upsertGoogleAccount({ googleId: "g-1", email: "g@example.com" });
+
+    expect(sentEmails).toContainEqual({ to: "g@example.com", subject: "welcome" });
+  });
+
+  /**
+   * The claim is a conditional `updateMany`, so two concurrent verifications
+   * cannot both win the race and send twice.
+   */
+  it("is not sent again once the claim has been taken", async () => {
+    prisma.account.updateMany.mockResolvedValue({ count: 0 });
+    prisma.verificationToken.findUnique.mockResolvedValue({
+      id: 1,
+      account_id: 1,
+      type: "EMAIL_VERIFICATION",
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await accounts.verifyEmail("token");
+
+    expect(sentEmails.filter((email) => email.subject === "welcome")).toHaveLength(0);
+  });
+
+  /** A failed welcome must never fail the action that triggered it. */
+  it("does not fail verification when the mail provider is down", async () => {
+    const mailer = await import("../../src/lib/mailer.js");
+    vi.mocked(mailer.sendWelcomeEmail).mockRejectedValueOnce(new Error("provider down"));
+
+    prisma.verificationToken.findUnique.mockResolvedValue({
+      id: 1,
+      account_id: 1,
+      type: "EMAIL_VERIFICATION",
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    prisma.account.findUnique.mockResolvedValue({
+      email: "worker@example.com",
+      displayName: "Worker",
+      walletAddress: null,
+    });
+
+    await expect(accounts.verifyEmail("token")).resolves.toMatchObject({
+      message: "Email verified",
+    });
   });
 });

@@ -1,159 +1,182 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/shared/AppShell";
 import { showToast } from "@/components/Toast";
+import {
+  Button,
+  Callout,
+  Field,
+  Input,
+  Page,
+  PageHeader,
+  Skeleton,
+  Sol,
+  Surface,
+} from "@/components/ui-kit";
 import { RoleGuard } from "@/lib/auth";
 import { creatorEndpoints, type CreatorTask } from "@/lib/api";
 
+/**
+ * Editing a live task.
+ *
+ * Deliberately narrow: only the title and the closing time can change. Budget,
+ * reward and slot count are all reserved against the creator's vault the moment
+ * the task is published, and a worker who answered under one reward must not
+ * find it changed underneath them. Reducing the scope is a refund — that is the
+ * "Close & refund" action, not an edit.
+ */
 function EditTaskForm({ taskId }: { taskId: number }) {
   const router = useRouter();
   const [task, setTask] = useState<CreatorTask | null>(null);
   const [title, setTitle] = useState("");
-  const [expirationDate, setExpirationDate] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const data = await creatorEndpoints.getTask(taskId);
       setTask(data);
       setTitle(data.title);
+
       if (data.expiresAt) {
         // `datetime-local` expects local time. Using `toISOString()` directly,
         // as the old page did, shifted the shown expiry by the timezone offset.
         const date = new Date(data.expiresAt);
         const offsetMs = date.getTimezoneOffset() * 60_000;
-        setExpirationDate(new Date(date.getTime() - offsetMs).toISOString().slice(0, 16));
+        setExpiresAt(new Date(date.getTime() - offsetMs).toISOString().slice(0, 16));
       }
     } catch (error: any) {
-      showToast(error?.message ?? "Failed to load task", "error");
+      showToast(error?.message ?? "Could not load that task", "error");
       router.push("/creator/tasks");
     } finally {
       setLoading(false);
     }
-  }, [taskId, router]);
+  }, [router, taskId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isSubmitting) return;
-
-    setIsSubmitting(true);
+  const save = async () => {
+    setSaving(true);
     try {
       await creatorEndpoints.updateTask(taskId, {
-        title,
-        // Convert local wall-clock time back to an absolute instant.
-        expirationDate: expirationDate ? new Date(expirationDate).toISOString() : null,
+        title: title.trim(),
+        expirationDate: expiresAt ? new Date(expiresAt).toISOString() : null,
       });
       showToast("Task updated", "success");
       router.push(`/creator/task/${taskId}`);
     } catch (error: any) {
-      showToast(error?.message ?? "Failed to update task", "error");
+      showToast(error?.message ?? "Could not save those changes", "error");
     } finally {
-      setIsSubmitting(false);
+      setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="max-w-2xl mx-auto p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 w-1/3 rounded bg-gray-200" />
-          <div className="h-40 rounded-xl bg-gray-200" />
-        </div>
-      </div>
-    );
-  }
-
-  const isEditable = task?.status === "OPEN";
+  const closed = task && task.status !== "OPEN";
 
   return (
-    <div className="max-w-2xl mx-auto p-4 sm:p-6">
-      <button
-        onClick={() => router.push(`/creator/task/${taskId}`)}
-        className="mb-4 inline-flex items-center gap-2 text-gray-600 hover:text-gray-900"
+    <Page className="max-w-2xl">
+      <Link
+        href={`/creator/task/${taskId}`}
+        className="app-focus-ring app-enter mb-4 inline-flex items-center gap-1.5 rounded text-sm text-muted-foreground hover:text-foreground"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        <span className="font-medium">Back to task</span>
-      </button>
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to task
+      </Link>
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">Edit task</h1>
+      <PageHeader
+        eyebrow="Creator"
+        title="Edit task"
+        description="Change what workers see. The budget is already reserved and cannot be edited."
+      />
 
-        {!isEditable && (
-          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            This task is {task?.status.toLowerCase()} and can no longer be edited.
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="title" className="mb-2 block text-sm font-semibold text-gray-800">
-              Title
-            </label>
-            <input
-              id="title"
-              type="text"
+      {loading ? (
+        <Surface className="space-y-4 p-5">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-10 w-full" />
+        </Surface>
+      ) : closed ? (
+        <Callout tone="warning" title="This task is closed">
+          Only open tasks can be edited.
+        </Callout>
+      ) : (
+        <Surface className="app-enter space-y-5 p-5 sm:p-6">
+          <Field
+            label="Task title"
+            htmlFor="edit-title"
+            hint="Workers see this above the images."
+          >
+            <Input
+              id="edit-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              disabled={!isEditable}
-              required
               maxLength={200}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label htmlFor="expiration" className="mb-2 block text-sm font-semibold text-gray-800">
-              Expires at
-            </label>
-            <input
-              id="expiration"
+          <Field
+            label="Closes at"
+            htmlFor="edit-expiry"
+            hint="Leave blank for no deadline. Unfilled slots return to your vault when a task closes."
+          >
+            <Input
+              id="edit-expiry"
               type="datetime-local"
-              value={expirationDate}
-              onChange={(event) => setExpirationDate(event.target.value)}
-              disabled={!isEditable}
+              value={expiresAt}
+              onChange={(event) => setExpiresAt(event.target.value)}
               min={new Date(Date.now() + 3_600_000).toISOString().slice(0, 16)}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:border-transparent focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50"
             />
-            <p className="mt-2 text-sm text-gray-500">
-              Leave blank for no expiry. Workers stop seeing the task once it expires.
-            </p>
-          </div>
+          </Field>
 
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={() => router.push(`/creator/task/${taskId}`)}
-              className="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-gray-700 hover:bg-gray-50"
-            >
+          {task && (
+            <dl className="divide-y divide-border rounded-lg border border-border bg-muted/40 px-4 text-sm">
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-muted-foreground">Budget</dt>
+                <dd className="font-semibold">
+                  <Sol lamports={task.amount} decimals={4} />
+                </dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-muted-foreground">Each answer pays</dt>
+                <dd className="font-semibold">
+                  <Sol lamports={task.rewardPerSubmission} decimals={6} />
+                </dd>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <dt className="text-muted-foreground">Answers</dt>
+                <dd className="font-semibold tabular-nums">
+                  {task.totalSubmissions} / {task.maxSubmissions}
+                </dd>
+              </div>
+            </dl>
+          )}
+
+          <div className="flex gap-2">
+            <Button onClick={save} disabled={!title.trim()} loading={saving}>
+              Save changes
+            </Button>
+            <Button variant="secondary" onClick={() => router.push(`/creator/task/${taskId}`)}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!isEditable || isSubmitting || !title.trim()}
-              className="flex-1 rounded-lg bg-gray-900 px-4 py-2.5 font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-            >
-              {isSubmitting ? "Saving…" : "Save changes"}
-            </button>
+            </Button>
           </div>
-        </form>
-      </div>
-    </div>
+        </Surface>
+      )}
+    </Page>
   );
 }
 
 export default function EditTaskPage({ params }: { params: { taskId: string } }) {
   return (
     <RoleGuard role="creator">
-      <AppShell role="creator" activeView="tasks">
+      <AppShell role="creator">
         <EditTaskForm taskId={Number(params.taskId)} />
       </AppShell>
     </RoleGuard>

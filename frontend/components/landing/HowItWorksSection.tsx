@@ -27,16 +27,16 @@ const STEPS: Step[] = [
     actor: "creator",
     title: "A task gets funded",
     detail:
-      "The creator sends 0.1 SOL and uploads the images to choose between. Nothing goes live until that exact transaction is found on chain.",
-    trace: "verify signature · 100,000,000 lamports · payer matches creator",
+      "The creator tops up their vault once, then chooses a budget and how many answers they want. That SOL moves from available to reserved — held for this task and nothing else.",
+    trace: "vault: available → reserved · TASK_FUNDED entry written",
   },
   {
     id: "open",
     actor: "chain",
-    title: "It opens for 100 answers",
+    title: "It opens for exactly that many answers",
     detail:
-      "The task splits into a hundred slots worth 0.001 SOL each. That cap is the entire budget — there is no hundred-and-first slot to sell.",
-    trace: "status OPEN · submissionCount 0/100",
+      "The budget divides into slots of an exact size. That count is the whole budget — there is no extra slot to sell, because there is nothing reserved to pay for one.",
+    trace: "status OPEN · reserved == reward × slots",
   },
   {
     id: "submit",
@@ -44,15 +44,15 @@ const STEPS: Step[] = [
     title: "Someone picks an option",
     detail:
       "A worker opens the task, chooses, and is credited straight away. One answer per person per task, and the slot is claimed atomically so two people can never take the same one.",
-    trace: "submission created · pending_amount += 1,000,000 lamports",
+    trace: "one transaction · worker credited · creator's reservation drawn down",
   },
   {
     id: "close",
     actor: "chain",
     title: "The task closes itself",
     detail:
-      "When the hundredth answer lands, the task marks itself complete and stops accepting work. No manual step, and no way to overspend the budget.",
-    trace: "status COMPLETED · 100/100",
+      "When the last answer lands, the task marks itself complete and stops accepting work. Close it early instead, or let it expire, and every unfilled slot goes straight back to the creator's vault.",
+    trace: "status COMPLETED · or TASK_REFUND for whatever went unanswered",
   },
   {
     id: "withdraw",

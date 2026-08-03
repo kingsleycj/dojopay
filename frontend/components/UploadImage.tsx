@@ -33,21 +33,23 @@ export function UploadImage({
 
     setUploading(true);
     try {
-      const { presignedUrl, fields } = await creatorEndpoints.presignedUrl();
+      /**
+       * Cloudflare R2 does not implement S3's `POST Object` form upload, so this
+       * is a presigned PUT with the file as the raw body.
+       *
+       * The content type is signed into the URL, which makes the two `file.type`
+       * uses below load-bearing: ask for a URL signed for this exact type, then
+       * send that exact type. Any mismatch — including the browser helpfully
+       * defaulting the header — fails signature verification and surfaces as a
+       * bare 403 with no explanation.
+       */
+      const upload = await creatorEndpoints.presignedUrl(file.type);
 
-      // Forward every field the presigner returned rather than cherry-picking a
-      // fixed list — a policy change on the backend used to silently break the
-      // upload here. S3 requires `file` to be appended last.
-      const formData = new FormData();
-      for (const [key, value] of Object.entries(fields)) {
-        formData.set(key, value);
-      }
-      formData.set("Content-Type", file.type);
-      formData.append("file", file);
+      await axios.put(upload.presignedUrl, file, {
+        headers: { "Content-Type": file.type },
+      });
 
-      await axios.post(presignedUrl, formData);
-
-      onImageAdded(`${CLOUDFRONT_URL}${fields.key}`);
+      onImageAdded(upload.publicUrl ?? `${CLOUDFRONT_URL}${upload.key}`);
     } catch (error: any) {
       // No silent data-URL fallback. It used to look like a successful upload,
       // then the task either failed to submit or rendered a broken image for

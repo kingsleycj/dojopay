@@ -24,7 +24,7 @@ const MILESTONES: Milestone[] = [
     status: "live",
     title: "The marketplace works end to end",
     detail:
-      "Fund a task, collect a hundred answers, withdraw to your wallet. Running on devnet with the guarantees above enforced.",
+      "Top up a vault, fund a task for whatever it is worth to you, collect the answers, withdraw what is left. Running on devnet with the guarantees above enforced.",
   },
   {
     status: "live",

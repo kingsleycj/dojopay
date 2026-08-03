@@ -20,16 +20,64 @@ export const signInInput = z.object({
   referredBy: z.string().min(32).max(44).nullish(),
 });
 
+/**
+ * Lamport amounts cross the wire as strings.
+ *
+ * `Number` loses precision above 2^53 and JSON has no BigInt, so a numeric
+ * amount would silently round at scale. Accepting only digits also rejects
+ * `"1e9"`, `"0.5"` and `"-100"`, each of which `BigInt()` would either
+ * mis-parse or throw on deep inside a service.
+ */
+const lamportString = z
+  .string()
+  .regex(/^\d+$/, "Amount must be a whole number of lamports, as a string");
+
 export const createTaskInput = z.object({
   options: z
     .array(z.object({ imageUrl: z.string().min(1) }))
     .min(2, "A task needs at least two options to choose between")
     .max(20, "A task may have at most 20 options"),
   title: z.string().trim().min(1).max(200).optional(),
-  signature: z.string().min(1),
+  /** Total lamports to commit. Bounds are enforced in `planBudget`. */
+  budgetLamports: lamportString,
+  /** How many answers the creator wants. */
+  maxSubmissions: z.coerce.number().int().positive(),
   // `.nullish()` because the frontend sends `null` when the field is left blank.
   expirationDate: z.string().min(1).nullish(),
 });
+
+export const budgetQuoteInput = z.object({
+  budgetLamports: lamportString,
+  maxSubmissions: z.coerce.number().int().positive(),
+});
+
+export const uploadQuery = z.object({
+  /**
+   * Restricted to images. The value is signed into the upload URL, so anything
+   * accepted here is what the object will be served as — an unconstrained value
+   * would let a creator store `text/html` under the platform's own domain.
+   */
+  contentType: z
+    .string()
+    .regex(/^image\/[a-z0-9.+-]+$/i, "Only image uploads are supported")
+    .default("image/jpeg"),
+});
+
+export const vaultDepositInput = z.object({
+  /** Signature of the transfer that moved SOL into the platform wallet. */
+  signature: z.string().min(1),
+});
+
+export const updatePreferencesInput = z
+  .object({
+    defaultMode: z.enum(["CREATOR", "WORKER"]).optional(),
+    notifyTaskActivity: z.boolean().optional(),
+    notifyPayouts: z.boolean().optional(),
+    notifyProductNews: z.boolean().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Provide at least one preference to update",
+  });
 
 export const updateTaskInput = z.object({
   title: z.string().trim().min(1).max(200).optional(),
@@ -59,3 +107,6 @@ export type CreateTaskInput = z.infer<typeof createTaskInput>;
 export type UpdateTaskInput = z.infer<typeof updateTaskInput>;
 export type CreateSubmissionInput = z.infer<typeof createSubmissionInput>;
 export type PaginationInput = z.infer<typeof paginationInput>;
+export type BudgetQuoteInput = z.infer<typeof budgetQuoteInput>;
+export type VaultDepositInput = z.infer<typeof vaultDepositInput>;
+export type UpdatePreferencesInput = z.infer<typeof updatePreferencesInput>;

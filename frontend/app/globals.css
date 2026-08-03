@@ -112,12 +112,18 @@
     @apply bg-gradient-to-r from-primary to-indigo-500 bg-clip-text text-transparent;
   }
 
+  /**
+   * `forwards`, never `both` — see CLAUDE.md §10. With `both` the element holds
+   * its `from` keyframe until the animation starts, so anywhere animations are
+   * suspended the content is permanently invisible. `forwards` degrades to "no
+   * animation" instead of "no content".
+   */
   .animate-fade-up {
-    animation: fadeUp 0.6s ease-out both;
+    animation: fadeUp 0.6s ease-out forwards;
   }
 
   .animate-fade-in {
-    animation: fadeIn 0.5s ease-out both;
+    animation: fadeIn 0.5s ease-out forwards;
   }
 
   .animate-scale-in {
@@ -370,5 +376,169 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+  }
+}
+/* ===========================================================================
+ * Signed-in app: motion and mode identity
+ *
+ * Separate from the `.dojo` landing tokens above, which are deliberately scoped
+ * so marketing styling cannot leak into the dashboards. Everything here applies
+ * to the app surfaces (creator, worker, settings) and uses the shadcn token set.
+ * ======================================================================== */
+
+:root {
+  /**
+   * Mode accents.
+   *
+   * One account is both a creator and a worker, so the switch between them has
+   * to be legible at a glance without reading any labels. A single accent
+   * variable is re-pointed by the `data-mode` attribute on the shell, which
+   * means every component can just use `--mode-accent` and none of them need to
+   * know which mode is active.
+   */
+  --mode-accent: 234 89% 54%;
+  --mode-accent-soft: 234 89% 96%;
+  --mode-accent-ring: 234 89% 54%;
+
+  /* Consistent easing so unrelated components still feel like one product. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 380ms;
+}
+
+[data-mode="creator"] {
+  --mode-accent: 262 83% 58%;
+  --mode-accent-soft: 262 83% 96%;
+  --mode-accent-ring: 262 83% 58%;
+}
+
+[data-mode="worker"] {
+  --mode-accent: 160 84% 32%;
+  --mode-accent-soft: 160 70% 95%;
+  --mode-accent-ring: 160 84% 32%;
+}
+
+.dark [data-mode="creator"] {
+  --mode-accent: 262 83% 68%;
+  --mode-accent-soft: 262 40% 18%;
+}
+
+.dark [data-mode="worker"] {
+  --mode-accent: 160 70% 45%;
+  --mode-accent-soft: 160 40% 14%;
+}
+
+@layer utilities {
+  .text-accent-mode { color: hsl(var(--mode-accent)); }
+  .bg-accent-mode { background-color: hsl(var(--mode-accent)); }
+  .bg-accent-mode-soft { background-color: hsl(var(--mode-accent-soft)); }
+  .border-accent-mode { border-color: hsl(var(--mode-accent)); }
+  .ring-accent-mode { --tw-ring-color: hsl(var(--mode-accent-ring)); }
+
+  /**
+   * Entrance animation for page content.
+   *
+   * `forwards` for the same reason as above: if animations are suspended the
+   * element simply appears rather than never becoming visible.
+   */
+  .app-enter {
+    opacity: 0;
+    animation: appEnter var(--dur-slow) var(--ease-out-soft) forwards;
+  }
+
+  /**
+   * Staggered entrance for lists and stat rows.
+   *
+   * Capped at eight steps on purpose. Beyond that the last item waits long
+   * enough that the page reads as slow rather than as considered, so anything
+   * past the cap shares the final delay instead of continuing to accumulate.
+   */
+  .app-stagger > * {
+    opacity: 0;
+    animation: appEnter var(--dur-slow) var(--ease-out-soft) forwards;
+  }
+  .app-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .app-stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .app-stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .app-stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .app-stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .app-stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .app-stagger > *:nth-child(7) { animation-delay: 240ms; }
+  .app-stagger > *:nth-child(n + 8) { animation-delay: 280ms; }
+
+  /** Loading placeholder. A moving highlight reads as "working", not "broken". */
+  .app-skeleton {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted) / 0.45) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: appShimmer 1.4s ease-in-out infinite;
+  }
+
+  /** Brief highlight when a number changes underneath the reader. */
+  .app-flash {
+    animation: appFlash 900ms var(--ease-out-soft) forwards;
+  }
+
+  /** Press feedback on interactive cards, kept subtle enough to feel physical. */
+  .app-press {
+    transition: transform var(--dur-fast) var(--ease-out-soft),
+      box-shadow var(--dur-base) var(--ease-out-soft),
+      border-color var(--dur-base) var(--ease-out-soft);
+  }
+  .app-press:active {
+    transform: scale(0.985);
+  }
+
+  /** Hides content from sighted users without removing it from the a11y tree. */
+  .app-focus-ring:focus-visible {
+    outline: 2px solid hsl(var(--mode-accent-ring));
+    outline-offset: 2px;
+  }
+}
+
+@keyframes appEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes appShimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes appFlash {
+  0% { background-color: hsl(var(--mode-accent) / 0.18); }
+  100% { background-color: transparent; }
+}
+
+/**
+ * Reduced motion.
+ *
+ * Every animation above is decorative — nothing here communicates state that is
+ * not also present in the markup — so switching them all off loses no
+ * information. `opacity: 1` is set explicitly because an animation that never
+ * runs would otherwise leave `.app-enter` stuck at its initial `opacity: 0`.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .app-enter,
+  .app-stagger > * {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .app-skeleton,
+  .app-flash {
+    animation: none !important;
+  }
+
+  .app-press:active {
+    transform: none;
   }
 }

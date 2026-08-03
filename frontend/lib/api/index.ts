@@ -1,6 +1,8 @@
 import { adminApi, api, BACKEND_URL, publicApi } from "./client";
 import type {
   Account,
+  AccountPreferences,
+  BudgetQuote,
   AdminAccountDetail,
   AdminAccountList,
   AdminAuditPage,
@@ -12,6 +14,8 @@ import type {
   CreatorTask,
   PublicTask,
   TaskResults,
+  Vault,
+  VaultStatement,
   WorkerBalance,
   WorkerDashboard,
   WorkerEarnings,
@@ -54,6 +58,10 @@ export const authApi = {
 
   updateProfile: (payload: { displayName?: string }) =>
     api.patch<{ account: Account }>("/v1/auth/profile", payload).then((r) => r.data.account),
+
+  /** Partial update: only the keys sent are written. */
+  updatePreferences: (payload: Partial<AccountPreferences>) =>
+    api.patch<{ account: Account }>("/v1/auth/preferences", payload).then((r) => r.data.account),
 
   changePassword: (payload: { currentPassword: string; newPassword: string }) =>
     api.post<{ message: string }>("/v1/auth/change-password", payload).then((r) => r.data),
@@ -126,12 +134,38 @@ export const creatorEndpoints = {
   getTaskResults: (taskId: number) =>
     api.get<TaskResults>("/v1/user/task", { params: { taskId } }).then((r) => r.data),
 
+  /**
+   * Publish a task, funded from the creator's vault.
+   *
+   * No transaction signature: the SOL is already on the platform, put there by a
+   * separate top-up. Creating a task is a ledger move, so there is no wallet
+   * round-trip and nothing to confirm on chain.
+   */
   createTask: (payload: {
     options: Array<{ imageUrl: string }>;
     title: string;
-    signature: string;
+    budgetLamports: string;
+    maxSubmissions: number;
     expirationDate?: string | null;
   }) => api.post<{ id: number }>("/v1/user/task", payload).then((r) => r.data),
+
+  /** Close a task early; unfilled slots return to the vault. */
+  cancelTask: (taskId: number) =>
+    api
+      .post<{ message: string; refunded: string; vault: Vault }>(`/v1/user/task/${taskId}/cancel`)
+      .then((r) => r.data),
+
+  /**
+   * Server-side budget arithmetic.
+   *
+   * The composer shows what the server will actually reserve rather than
+   * reimplementing the rounding — the two disagreeing at the moment of
+   * publishing is exactly the bug this avoids.
+   */
+  quoteBudget: (budgetLamports: string, maxSubmissions: number) =>
+    api
+      .get<BudgetQuote>("/v1/user/task-quote", { params: { budgetLamports, maxSubmissions } })
+      .then((r) => r.data),
 
   updateTask: (taskId: number, payload: { title?: string; expirationDate?: string | null }) =>
     api.patch(`/v1/user/task/${taskId}`, payload).then((r) => r.data),
@@ -140,9 +174,49 @@ export const creatorEndpoints = {
 
   earnings: () => api.get<CreatorEarnings>("/v1/user/earnings").then((r) => r.data),
 
-  presignedUrl: () =>
+  /**
+   * A presigned PUT URL for one image.
+   *
+   * `contentType` is signed into the URL by Cloudflare R2, so the browser must
+   * send back the identical value on the upload or the request fails signature
+   * verification.
+   */
+  presignedUrl: (contentType: string) =>
     api
-      .get<{ presignedUrl: string; fields: Record<string, string> }>("/v1/user/presignedUrl")
+      .get<{
+        presignedUrl: string;
+        key: string;
+        publicUrl: string;
+        maxBytes: number;
+        fields: Record<string, string>;
+      }>("/v1/user/presignedUrl", { params: { contentType } })
+      .then((r) => r.data),
+};
+
+/**
+ * Vault endpoints.
+ *
+ * Mounted on the account rather than a role: the balance a creator funds tasks
+ * from is the same one they see in settings and withdraw from.
+ */
+export const vaultEndpoints = {
+  summary: () => api.get<Vault>("/v1/vault").then((r) => r.data),
+
+  statement: (page = 1, limit = 10) =>
+    api.get<VaultStatement>("/v1/vault/statement", { params: { page, limit } }).then((r) => r.data),
+
+  /** Credit a confirmed on-chain transfer. Replays are rejected server-side. */
+  deposit: (signature: string) =>
+    api
+      .post<{ message: string; vault: Vault }>("/v1/vault/deposit", { signature })
+      .then((r) => r.data),
+
+  withdraw: (signature: number[]) =>
+    api
+      .post<{ message: string; signature: string; amount: string; vault: Vault }>(
+        "/v1/vault/withdraw",
+        { signature },
+      )
       .then((r) => r.data),
 };
 
@@ -156,6 +230,10 @@ export const workerEndpoints = {
         if (error?.status === 404) return null;
         throw error;
       }),
+
+  /** Everything this worker could take on, best-paying first. */
+  availableTasks: () =>
+    api.get<{ tasks: WorkerTask[] }>("/v1/worker/tasks").then((r) => r.data.tasks),
 
   submit: (taskId: number, selection: number) =>
     api
@@ -265,6 +343,17 @@ export const adminEndpoints = {
 /** Message a worker signs to authorise a withdrawal. Matches the backend byte for byte. */
 export function buildWithdrawalMessage(lamports: string, address: string): string {
   return `Withdraw ${lamports} lamports to ${address}`;
+}
+
+/**
+ * Message a creator signs to authorise a vault withdrawal.
+ *
+ * Deliberately different text from the worker one: signing a message that could
+ * be replayed against the other balance is exactly what a distinct string
+ * prevents. Must match `buildVaultWithdrawalMessage` on the backend byte for byte.
+ */
+export function buildVaultWithdrawalMessage(lamports: string, address: string): string {
+  return `Withdraw ${lamports} lamports from your DojoPay vault to ${address}`;
 }
 
 export * from "./types";

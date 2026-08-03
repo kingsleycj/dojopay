@@ -16,6 +16,8 @@ const router = Router();
 router.use(asyncHandler(requireAccount), asyncHandler(requireWorker));
 
 router.get("/nextTask", asyncHandler(controller.nextTask));
+/** Every task this worker could take, best-paying first. */
+router.get("/tasks", asyncHandler(controller.availableTasks));
 router.post("/submission", asyncHandler(controller.submit));
 router.get("/balance", asyncHandler(controller.balance));
 router.get("/submissions", asyncHandler(controller.submissions));

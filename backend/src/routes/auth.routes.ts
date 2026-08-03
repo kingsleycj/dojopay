@@ -49,6 +49,7 @@ router.use(asyncHandler(requireAccount));
 router.get("/me", asyncHandler(controller.me));
 router.post("/logout", asyncHandler(controller.logout));
 router.patch("/profile", asyncHandler(controller.updateProfile));
+router.patch("/preferences", asyncHandler(controller.updatePreferences));
 router.post("/change-password", authRateLimit, asyncHandler(controller.changePassword));
 router.post("/resend-verification", authRateLimit, asyncHandler(controller.resendVerification));
 
