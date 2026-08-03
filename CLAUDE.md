@@ -604,6 +604,14 @@ Discovered in the audit of `main`. Each links to the phase that resolves it.
   stay scoped: the signed-in app uses the shadcn token set, and leaking landing values into
   it would restyle every dashboard card and button. Add landing tokens under `.dojo`, never
   to `:root`.
+- **The root layout mounts the Solana wallet providers, so every route compiles the
+  whole adapter tree** (~9,300 modules, ~35s on a cold `.next`). That includes the
+  marketing page and `/admin`, neither of which needs a wallet. It presents as
+  `ChunkLoadError: Loading chunk app/layout failed (timeout)` on a first load;
+  `next.config.js` raises webpack's `chunkLoadTimeout` in development so a slow
+  compile is slow rather than a hard error. The real fix is to mount
+  `WalletProviders` only on the routes that need it — not yet done, and worth
+  doing if dev startup keeps getting slower.
 - **Entrance animations use `animation-fill-mode: forwards`, never `both`.** With `both` an
   element holds its `from` keyframe until the animation starts, so anywhere animations are
   suspended the content is permanently invisible. `forwards` degrades to "no animation"
