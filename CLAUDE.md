@@ -48,7 +48,7 @@ dojopay/
 ├── render.yaml          ← backend deploy config (Render)
 ├── backend/             ← Express + Prisma API
 ├── frontend/            ← Next.js 14 App Router client
-└── programs/            ← Anchor (Rust) on-chain escrow program — Phase 6
+└── escrow/              ← Anchor (Rust) on-chain escrow program — Phase 6, not deployed
 ```
 
 Backend and frontend are independent npm projects; the root `package.json` only wires up husky.
@@ -219,9 +219,9 @@ npx prisma generate
 npx prisma studio
 
 # on-chain program (Phase 6)
-cd programs/escrow
-anchor build
-anchor test
+cd escrow
+cargo test -p dojopay-escrow                                        # logic tests
+cargo-build-sbf --manifest-path programs/dojopay-escrow/Cargo.toml  # deployable .so
 ```
 
 A husky **pre-commit hook runs both test suites** and blocks the commit on failure.
@@ -331,14 +331,31 @@ Goal: a task link works for someone who has never heard of DojoPay.
 - [x] Referral attribution: `?ref=<address>` recorded once on worker creation
 - [x] OG/Twitter card metadata so links unfurl with the task image
 
-### Phase 6 — On-chain escrow program `TODO`
+### Phase 6 — On-chain escrow program `WIP`
 Goal: remove the platform's ability to abscond with or lose task funds.
-- [ ] Anchor workspace at `programs/escrow`
-- [ ] `TaskVault` PDA per task; creator funds it directly, platform never custodies
-- [ ] Instructions: `initialize_task`, `record_submission`, `claim_reward`, `refund_expired`
-- [ ] Backend becomes an attester/indexer, not a treasury
-- [ ] `PaymentsProvider` interface so custodial and escrow paths coexist during migration
-- [ ] Program tests (`anchor test`) against a local validator
+- [x] Anchor workspace at `escrow/` (program crate `escrow/programs/dojopay-escrow`)
+- [x] `TaskVault` PDA per task; creator funds it directly, platform never custodies
+- [x] Instructions: `initialize_task`, `claim_reward`, `refund_expired`
+- [x] `ClaimReceipt` PDA seeded by `(vault, worker)` — the on-chain analogue of the
+      `@@unique([worker_id, task_id])` constraint, making double-claims impossible
+- [x] Backend is attester, not treasury: it signs *who worked*, never *where funds go*
+- [x] `PaymentsProvider` interface + `CustodialPaymentsProvider`, so escrow can be
+      swapped in per-task via `Task.vaultAddress` rather than a flag day
+- [x] Builds to a deployable `dojopay_escrow.so` (~248K); 7 logic tests passing
+- [ ] `EscrowPaymentsProvider` wiring the backend to the program
+- [ ] Integration tests (`anchor test`) against `solana-test-validator`
+- [ ] Real program id — `declare_id!` still holds a placeholder
+- [ ] Security review before any real funds
+
+> **Not deployed, not audited.** The program compiles and its arithmetic
+> invariants are tested, but it has never run against a validator. The backend
+> still settles every payout through `CustodialPaymentsProvider`.
+>
+> **Do not run a blanket `cargo update` in `escrow/`.** The lockfile pins several
+> transitive crates (`borsh`, `proc-macro-crate`, `indexmap`, `rayon`, `jobserver`,
+> `zeroize_derive`, `unicode-segmentation`, `blake3`, `toml_datetime`) below versions
+> that require edition 2024 / rustc 1.85, which this toolchain (rustc 1.79,
+> solana-cli 1.18) cannot build.
 
 ### Phase 7 — Hardening & docs `TODO`
 - [ ] Unit tests for every Phase 3 economic rule (cap, idempotency, status lifecycle)
