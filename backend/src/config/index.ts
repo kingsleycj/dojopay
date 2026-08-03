@@ -160,6 +160,7 @@ export const config = {
   },
 
   cors: {
+    /** Explicit allow-list. Always enforced in production. */
     allowedOrigins: [
       "http://localhost:3000",
       "http://localhost:3001",
@@ -171,6 +172,34 @@ export const config = {
     ].filter((origin): origin is string => Boolean(origin)),
   },
 } as const;
+
+/**
+ * CORS origin check.
+ *
+ * Outside production any localhost or 127.0.0.1 origin is accepted regardless
+ * of port. The previous hard-coded port list meant a developer running the
+ * frontend on any other port had *every* API call blocked by the browser — and
+ * because a blocked request looks identical to a failed one, it presented as
+ * features mysteriously not working rather than as a CORS error. Production
+ * still uses the explicit allow-list.
+ */
+export function isOriginAllowed(origin: string | undefined): boolean {
+  // Same-origin requests, curl, and server-to-server calls send no Origin.
+  if (!origin) return true;
+
+  if (config.cors.allowedOrigins.includes(origin)) return true;
+
+  if (!config.isProduction) {
+    try {
+      const { hostname } = new URL(origin);
+      return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
 
 /**
  * Fail fast at boot rather than at the first request that needs a missing value.

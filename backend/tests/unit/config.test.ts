@@ -7,6 +7,7 @@ import {
   assertConfigValid,
   config,
   isAdminEnabled,
+  isOriginAllowed,
 } from "../../src/config/index.js";
 
 /** Temporarily override a readonly config value for the duration of a check. */
@@ -117,5 +118,45 @@ describe("degradation instead of failure", () => {
 
   it("sets a withdrawal minimum above the network fee", () => {
     expect(MIN_WITHDRAWAL_LAMPORTS).toBeGreaterThan(5_000n);
+  });
+});
+
+/**
+ * CORS.
+ *
+ * A blocked request looks identical to a failed one in the browser, so an
+ * over-tight origin rule presents as "features mysteriously do not work"
+ * rather than as an error anyone can act on. Development is permissive for
+ * localhost; production is not.
+ */
+describe("isOriginAllowed", () => {
+  it("allows the explicitly listed origins", () => {
+    expect(isOriginAllowed("http://localhost:5174")).toBe(true);
+    expect(isOriginAllowed("https://dojopay.vercel.app")).toBe(true);
+  });
+
+  /** curl, server-to-server, and same-origin requests send no Origin header. */
+  it("allows a request with no Origin", () => {
+    expect(isOriginAllowed(undefined)).toBe(true);
+  });
+
+  /** The bug this fixes: any dev port silently broke every API call. */
+  it("allows localhost on an unlisted port in development", () => {
+    expect(isOriginAllowed("http://localhost:5240")).toBe(true);
+    expect(isOriginAllowed("http://127.0.0.1:8080")).toBe(true);
+  });
+
+  it("rejects a non-localhost origin even in development", () => {
+    expect(isOriginAllowed("https://evil.example")).toBe(false);
+  });
+
+  /** A hostname merely *containing* "localhost" must not pass. */
+  it("rejects lookalike hostnames", () => {
+    expect(isOriginAllowed("https://localhost.evil.example")).toBe(false);
+    expect(isOriginAllowed("https://notlocalhost")).toBe(false);
+  });
+
+  it("rejects a malformed origin", () => {
+    expect(isOriginAllowed("not a url")).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { adminApi, api, publicApi } from "./client";
+import { adminApi, api, BACKEND_URL, publicApi } from "./client";
 import type {
   Account,
   AdminAccountDetail,
@@ -79,12 +79,38 @@ export const authApi = {
   unlinkWallet: () =>
     api.delete<{ account: Account }>("/v1/auth/link-wallet").then((r) => r.data.account),
 
+  /**
+   * Whether the backend has Google OAuth configured.
+   *
+   * A failure here must never break the login page — email and wallet sign-in
+   * still work — so it resolves to `false` rather than throwing. But it says so
+   * out loud in development: a silently hidden button is indistinguishable from
+   * a broken one, and "why is there no Google button" is otherwise a genuinely
+   * hard thing to diagnose (the backend being unreachable, or pointed at the
+   * wrong host, looks identical to Google simply being unconfigured).
+   */
   googleEnabled: () =>
     publicApi
       .get<{ enabled: boolean }>("/v1/auth/google/status")
-      .then((r) => r.data.enabled)
-      // Never let a status probe break the login page.
-      .catch(() => false),
+      .then((r) => {
+        if (!r.data.enabled && process.env.NODE_ENV !== "production") {
+          console.info(
+            "[dojopay] Google sign-in is hidden: the backend reports it is not configured. " +
+              "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env.",
+          );
+        }
+        return r.data.enabled;
+      })
+      .catch((error) => {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            `[dojopay] Could not reach ${BACKEND_URL}/v1/auth/google/status — hiding the ` +
+              "Google button. Check NEXT_PUBLIC_BACKEND_URL and that the backend is running.",
+            error,
+          );
+        }
+        return false;
+      }),
 };
 
 /** Full-page redirect: OAuth cannot happen over XHR. */
