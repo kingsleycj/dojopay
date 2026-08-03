@@ -1,24 +1,15 @@
-import { PrismaClient } from '@prisma/client';
+import { afterEach, vi } from "vitest";
 
-const prisma = new PrismaClient();
+/**
+ * Global test setup.
+ *
+ * These are unit tests: no database, no RPC. `lib/prisma` is mocked per test
+ * file via `vi.mock`, and anything reaching the network is stubbed explicitly.
+ * The previous setup instantiated a real `PrismaClient` and logged on every
+ * hook, which produced thousands of lines of noise and attempted a live
+ * connection on each run.
+ */
 
-beforeAll(async () => {
-  // Setup test database
-  console.log('Setting up test environment...');
-});
-
-afterAll(async () => {
-  // Cleanup test database
-  await prisma.$disconnect();
-  console.log('Test environment cleaned up');
-});
-
-beforeEach(async () => {
-  // Reset database before each test
-  console.log('Resetting test data...');
-});
-
-afterEach(async () => {
-  // Cleanup after each test
-  console.log('Test completed, cleaning up...');
+afterEach(() => {
+  vi.clearAllMocks();
 });

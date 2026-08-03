@@ -1,18 +1,18 @@
 "use client";
 
 import { useWallet } from "@solana/wallet-adapter-react";
-import { Connection, clusterApiUrl, PublicKey } from "@solana/web3.js";
-import axios from "axios";
-import { useEffect, useState } from "react";
-import { BACKEND_URL } from "@/utils";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { useCallback, useEffect, useState } from "react";
+import { creatorEndpoints, type CreatorEarnings } from "@/lib/api";
+import { SOLANA_ENDPOINT, explorerTxUrl } from "@/lib/solana/config";
 import { lamportsToSol } from "@/utils/convert";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Calendar, 
-  ExternalLink, 
-  CheckCircle, 
-  Clock, 
+import {
+  DollarSign,
+  TrendingUp,
+  Calendar,
+  ExternalLink,
+  CheckCircle,
+  Clock,
   ArrowUpRight,
   ArrowDownRight,
   Wallet,
@@ -20,36 +20,12 @@ import {
   Filter,
   Search,
   Download,
-  Plus
+  Plus,
 } from "lucide-react";
 
-interface EarningRecord {
-  id: number;
-  amount: string;
-  date: string;
-  status: 'completed' | 'paid' | 'ongoing';
-  transactionHash?: string;
-  taskId?: number;
-  taskTitle?: string;
-  workerAddress?: string;
-  submissionId?: number;
-}
-
-interface CreatorEarningsData {
-  totalSpent: string;
-  totalTasks: number;
-  completedTasks: number;
-  pendingTasks: number;
-  averageTaskCost: string;
-  earnings: EarningRecord[];
-  metrics: {
-    monthlySpent: string;
-    weeklySpent: string;
-    dailySpent: string;
-    totalWorkers: number;
-    retentionRate: string;
-  };
-}
+// Wire format lives in lib/api/types.
+type EarningRecord = CreatorEarnings["earnings"][number];
+type CreatorEarningsData = CreatorEarnings;
 
 interface CreatorEarningsProps {
   onBack?: () => void;
@@ -67,18 +43,22 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
   const { publicKey } = useWallet();
   const [data, setData] = useState<CreatorEarningsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'ongoing' | 'completed' | 'paid' | 'expired'>('all');
-  const [dateRange, setDateRange] = useState<'all' | 'week' | 'month' | 'year'>('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<
+    "all" | "ongoing" | "completed" | "paid" | "expired"
+  >("all");
+  const [dateRange, setDateRange] = useState<"all" | "week" | "month" | "year">(
+    "all",
+  );
   const [currentPage, setCurrentPage] = useState(1);
   const [walletBalance, setWalletBalance] = useState<string | null>(null);
   const itemsPerPage = 10;
 
   const fetchWalletBalance = async () => {
     if (!publicKey) return;
-    
+
     try {
-      const connection = new Connection(clusterApiUrl("devnet"));
+      const connection = new Connection(SOLANA_ENDPOINT);
       const balance = await connection.getBalance(publicKey);
       setWalletBalance(lamportsToSol(balance.toString()));
     } catch (error) {
@@ -86,74 +66,67 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
     }
   };
 
-  const fetchEarnings = async () => {
+  const fetchEarnings = useCallback(async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const response = await axios.get(`${BACKEND_URL}/v1/user/earnings`, {
-        headers: { "Authorization": `Bearer ${token}` }
-      });
-
-      setData(response.data);
-    } catch (error: any) {
+      setData(await creatorEndpoints.earnings());
+    } catch (error) {
       console.error("Error fetching creator earnings:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("token");
-        window.location.href = "/";
-      } else {
-        setData(null);
-      }
+      setData(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchEarnings();
     fetchWalletBalance();
   }, [publicKey]);
 
-  const filteredEarnings = data?.earnings.filter(earning => {
-    const matchesSearch = earning.taskTitle?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          earning.workerAddress?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          earning.submissionId?.toString().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || earning.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  }) || [];
+  const filteredEarnings =
+    data?.earnings.filter((earning) => {
+      const matchesSearch =
+        earning.taskTitle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        earning.workerAddress
+          ?.toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        String(earning.id).includes(searchTerm.toLowerCase());
+      const matchesFilter =
+        filterStatus === "all" || earning.status === filterStatus;
+      return matchesSearch && matchesFilter;
+    }) || [];
 
   // Pagination logic
   const totalPages = Math.ceil(filteredEarnings.length / itemsPerPage);
   const paginatedEarnings = filteredEarnings.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'ongoing':
+      case "ongoing":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
             <Clock className="h-3 w-3 mr-1" />
             Ongoing
           </span>
         );
-      case 'completed':
+      case "completed":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
             <CheckCircle className="h-3 w-3 mr-1" />
             Completed
           </span>
         );
-      case 'paid':
+      case "paid":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
             <DollarSign className="h-3 w-3 mr-1" />
             Paid
           </span>
         );
-      case 'expired':
+      case "expired":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
             <Clock className="h-3 w-3 mr-1" />
@@ -170,30 +143,40 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
   };
 
   const openSolanaExplorer = (txHash: string) => {
-    window.open(`https://explorer.solana.com/tx/${txHash}?cluster=devnet`, '_blank');
+    window.open(explorerTxUrl(txHash), "_blank", "noopener,noreferrer");
   };
 
   const exportData = () => {
     if (!data) return;
-    
+
     const csvContent = [
-      ['Date', 'Task', 'Amount (SOL)', 'Amount (USD)', 'Status', 'Worker Address', 'Transaction Hash'],
-      ...filteredEarnings.map(earning => [
+      [
+        "Date",
+        "Task",
+        "Amount (SOL)",
+        "Amount (USD)",
+        "Status",
+        "Worker Address",
+        "Transaction Hash",
+      ],
+      ...filteredEarnings.map((earning) => [
         new Date(earning.date).toLocaleDateString(),
-        earning.taskTitle || 'Unknown Task',
+        earning.taskTitle || "Unknown Task",
         lamportsToSol(earning.amount),
         solToUsd(lamportsToSol(earning.amount)),
         earning.status,
-        earning.workerAddress || 'N/A',
-        earning.transactionHash || 'N/A'
-      ])
-    ].map(row => row.join(',')).join('\n');
+        earning.workerAddress || "N/A",
+        earning.transactionHash || "N/A",
+      ]),
+    ]
+      .map((row) => row.join(","))
+      .join("\n");
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `creator-earnings-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `creator-earnings-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -203,14 +186,23 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
       <div className="max-w-7xl mx-auto p-3 sm:p-4 lg:p-6">
         <div className="flex flex-col gap-3 mb-4 sm:mb-6">
           <div>
-            <div className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wider">Creator</div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Earnings & Wallet</h1>
-            <p className="text-sm sm:text-base text-gray-600 mt-1">Track your spending and transaction history</p>
+            <div className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wider">
+              Creator
+            </div>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+              Earnings & Wallet
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">
+              Track your spending and transaction history
+            </p>
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-5 animate-pulse">
+            <div
+              key={i}
+              className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-5 animate-pulse"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="h-4 bg-gray-200 rounded w-20 mb-2"></div>
@@ -232,10 +224,14 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
           <div className="bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
             <Wallet className="h-8 w-8 text-gray-400" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No earnings yet</h3>
-          <p className="text-sm text-gray-500 mb-4">Create tasks and get worker submissions to see earnings data here</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            No earnings yet
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Create tasks and get worker submissions to see earnings data here
+          </p>
           <button
-            onClick={() => window.location.href = '/creator/create'}
+            onClick={() => (window.location.href = "/creator/create")}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 mx-auto"
           >
             <Plus className="h-4 w-4" />
@@ -258,9 +254,15 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
       <div className="flex flex-col gap-3 mb-6 sm:mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wider">Creator</div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">Earnings & Wallet</h1>
-            <p className="text-sm sm:text-base text-gray-600 mt-1">Track your spending and transaction history</p>
+            <div className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wider">
+              Creator
+            </div>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+              Earnings & Wallet
+            </h1>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">
+              Track your spending and transaction history
+            </p>
           </div>
           <button
             onClick={exportData}
@@ -323,8 +325,12 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                   <DollarSign className="h-6 w-6 text-orange-600" />
                 </div>
                 <div className="text-right">
-                  <span className="text-2xl font-bold text-gray-900">{totalSpentSol} SOL</span>
-                  <p className="text-xs text-green-600 font-medium">${totalSpentUsd} USD</p>
+                  <span className="text-2xl font-bold text-gray-900">
+                    {totalSpentSol} SOL
+                  </span>
+                  <p className="text-xs text-green-600 font-medium">
+                    ${totalSpentUsd} USD
+                  </p>
                 </div>
               </div>
               <p className="text-sm font-medium text-gray-600">Total Spent</p>
@@ -338,11 +344,17 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                   <Wallet className="h-6 w-6 text-purple-600" />
                 </div>
                 <div className="text-right">
-                  <span className="text-2xl font-bold text-gray-900">{walletBalance || '0'} SOL</span>
-                  <p className="text-xs text-green-600 font-medium">${walletBalance ? solToUsd(walletBalance) : '0'} USD</p>
+                  <span className="text-2xl font-bold text-gray-900">
+                    {walletBalance || "0"} SOL
+                  </span>
+                  <p className="text-xs text-green-600 font-medium">
+                    ${walletBalance ? solToUsd(walletBalance) : "0"} USD
+                  </p>
                 </div>
               </div>
-              <p className="text-sm font-medium text-gray-600">Wallet Balance</p>
+              <p className="text-sm font-medium text-gray-600">
+                Wallet Balance
+              </p>
               <p className="text-xs text-gray-500 mt-1">Current SOL balance</p>
             </div>
             {/* Weekly Spending */}
@@ -351,7 +363,9 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                 <div className="h-11 w-11 rounded-xl bg-green-100 border border-green-200 flex items-center justify-center">
                   <TrendingUp className="h-6 w-6 text-green-600" />
                 </div>
-                <span className="text-2xl font-bold text-gray-900">{weeklySpentSol} SOL</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  {weeklySpentSol} SOL
+                </span>
               </div>
               <p className="text-sm font-medium text-gray-600">Weekly</p>
               <p className="text-xs text-gray-500 mt-1">This week's spending</p>
@@ -363,10 +377,14 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                 <div className="h-11 w-11 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center">
                   <BarChart3 className="h-6 w-6 text-purple-600" />
                 </div>
-                <span className="text-2xl font-bold text-gray-900">{data.totalTasks}</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  {data.totalTasks}
+                </span>
               </div>
               <p className="text-sm font-medium text-gray-600">Total Tasks</p>
-              <p className="text-xs text-gray-500 mt-1">{data.completedTasks} completed</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {data.completedTasks} completed
+              </p>
             </div>
 
             {/* Average Task Cost */}
@@ -375,7 +393,9 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                 <div className="h-11 w-11 rounded-xl bg-yellow-100 border border-yellow-200 flex items-center justify-center">
                   <Wallet className="h-6 w-6 text-yellow-600" />
                 </div>
-                <span className="text-2xl font-bold text-gray-900">{lamportsToSol(data.averageTaskCost)} SOL</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  {lamportsToSol(data.averageTaskCost)} SOL
+                </span>
               </div>
               <p className="text-sm font-medium text-gray-600">Avg Task Cost</p>
               <p className="text-xs text-gray-500 mt-1">Per completed task</p>
@@ -387,18 +407,26 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                 <div className="h-11 w-11 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center">
                   <CheckCircle className="h-6 w-6 text-indigo-600" />
                 </div>
-                <span className="text-2xl font-bold text-gray-900">{data.metrics.totalWorkers}</span>
+                <span className="text-2xl font-bold text-gray-900">
+                  {data.metrics.totalWorkers}
+                </span>
               </div>
               <p className="text-sm font-medium text-gray-600">Total Workers</p>
-              <p className="text-xs text-gray-500 mt-1">{data.metrics.retentionRate} retention</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {data.metrics.retentionRate} retention
+              </p>
             </div>
           </div>
 
           {/* Transaction History */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
-              <h3 className="text-lg font-medium text-gray-900">Transaction History</h3>
-              <p className="mt-1 text-sm text-gray-500">Complete record of your task payments</p>
+              <h3 className="text-lg font-medium text-gray-900">
+                Transaction History
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Complete record of your task payments
+              </p>
             </div>
 
             {paginatedEarnings.length === 0 ? (
@@ -406,12 +434,13 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                 <div className="bg-gray-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                   <Wallet className="h-8 w-8 text-gray-400" />
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  No transactions found
+                </h3>
                 <p className="text-sm text-gray-500">
-                  {searchTerm || filterStatus !== 'all' || dateRange !== 'all' 
-                    ? 'Try adjusting your search or filter criteria'
-                    : 'Create tasks to see your transaction history here'
-                  }
+                  {searchTerm || filterStatus !== "all" || dateRange !== "all"
+                    ? "Try adjusting your search or filter criteria"
+                    : "Create tasks to see your transaction history here"}
                 </p>
               </div>
             ) : (
@@ -419,22 +448,40 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                      <th
+                        scope="col"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24"
+                      >
                         Amount
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28">
+                      <th
+                        scope="col"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28"
+                      >
                         Date
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40">
+                      <th
+                        scope="col"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40"
+                      >
                         Task
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                      <th
+                        scope="col"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24"
+                      >
                         Status
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                      <th
+                        scope="col"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32"
+                      >
                         Worker
                       </th>
-                      <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36">
+                      <th
+                        scope="col"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-36"
+                      >
                         Transaction
                       </th>
                     </tr>
@@ -446,7 +493,9 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                           <div className="text-sm font-medium text-gray-900">
                             {lamportsToSol(earning.amount)} SOL
                           </div>
-                          <div className="text-xs text-green-600 font-medium">${solToUsd(lamportsToSol(earning.amount))} USD</div>
+                          <div className="text-xs text-green-600 font-medium">
+                            ${solToUsd(lamportsToSol(earning.amount))} USD
+                          </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
@@ -458,10 +507,10 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="text-sm text-gray-900 truncate max-w-xs">
-                            {earning.taskTitle || 'Unknown Task'}
+                            {earning.taskTitle || "Unknown Task"}
                           </div>
                           <div className="text-xs text-gray-500">
-                            ID: #{earning.taskId} • Sub: #{earning.submissionId}
+                            Task #{earning.taskId} • Submission #{earning.id}
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -469,16 +518,17 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm">
                           <div className="text-sm text-gray-900 font-mono">
-                            {earning.workerAddress ? 
-                              `${earning.workerAddress.slice(0, 4)}...${earning.workerAddress.slice(-4)}` : 
-                              'N/A'
-                            }
+                            {earning.workerAddress
+                              ? `${earning.workerAddress.slice(0, 4)}...${earning.workerAddress.slice(-4)}`
+                              : "N/A"}
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm">
                           {earning.transactionHash ? (
                             <button
-                              onClick={() => openSolanaExplorer(earning.transactionHash!)}
+                              onClick={() =>
+                                openSolanaExplorer(earning.transactionHash!)
+                              }
                               className="text-[#f97316] hover:text-[#ea580c] font-medium flex items-center text-xs"
                             >
                               View on Solana
@@ -500,11 +550,18 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
               <div className="px-4 py-3 border-t border-gray-200 sm:px-6">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-700">
-                    Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredEarnings.length)} of {filteredEarnings.length} results
+                    Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                    {Math.min(
+                      currentPage * itemsPerPage,
+                      filteredEarnings.length,
+                    )}{" "}
+                    of {filteredEarnings.length} results
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(prev - 1, 1))
+                      }
                       disabled={currentPage === 1}
                       className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -514,7 +571,9 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
                       Page {currentPage} of {totalPages}
                     </span>
                     <button
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                      }
                       disabled={currentPage === totalPages}
                       className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -531,58 +590,81 @@ export const CreatorEarningsContent = ({ onBack }: CreatorEarningsProps) => {
         <div className="space-y-6">
           {/* Wallet Summary */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Wallet Summary</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Wallet Summary
+            </h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Current Balance</span>
-                <span className="text-sm font-medium text-gray-900">-- SOL</span>
+                <span className="text-sm font-medium text-gray-900">
+                  -- SOL
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Total Spent</span>
-                <span className="text-sm font-medium text-gray-900">{totalSpentSol} SOL</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {totalSpentSol} SOL
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Daily Average</span>
-                <span className="text-sm font-medium text-gray-900">{dailySpentSol} SOL</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {dailySpentSol} SOL
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Tasks Created</span>
-                <span className="text-sm font-medium text-gray-900">{data.totalTasks}</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {data.totalTasks}
+                </span>
               </div>
             </div>
           </div>
 
           {/* Performance Metrics */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Performance</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Performance
+            </h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Completion Rate</span>
                 <span className="text-sm font-medium text-gray-900">
-                  {data.totalTasks > 0 ? ((data.completedTasks / data.totalTasks) * 100).toFixed(1) : 0}%
+                  {data.totalTasks > 0
+                    ? ((data.completedTasks / data.totalTasks) * 100).toFixed(1)
+                    : 0}
+                  %
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Avg Task Cost</span>
-                <span className="text-sm font-medium text-gray-900">{lamportsToSol(data.averageTaskCost)} SOL</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {lamportsToSol(data.averageTaskCost)} SOL
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Total Workers</span>
-                <span className="text-sm font-medium text-gray-900">{data.metrics.totalWorkers}</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {data.metrics.totalWorkers}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Worker Retention</span>
-                <span className="text-sm font-medium text-gray-900">{data.metrics.retentionRate}</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {data.metrics.retentionRate}
+                </span>
               </div>
             </div>
           </div>
 
           {/* Quick Actions */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              Quick Actions
+            </h3>
             <div className="space-y-3">
               <button
-                onClick={() => window.open('/creator/tasks/create', '_blank')}
+                onClick={() => window.open("/creator/create", "_blank")}
                 className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
               >
                 <DollarSign className="h-4 w-4" />

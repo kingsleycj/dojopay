@@ -1,83 +1,94 @@
-"use client"
-import { BACKEND_URL, CLOUDFRONT_URL } from "@/utils";
+"use client";
+
+import { useState } from "react";
 import axios from "axios";
-import { useState } from "react"
+import { creatorEndpoints } from "@/lib/api";
+import { CLOUDFRONT_URL } from "@/utils";
+import { showToast } from "./Toast";
 
-export function UploadImage({ onImageAdded, image }: {
-    onImageAdded: (image: string) => void;
-    image?: string;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+export function UploadImage({
+  onImageAdded,
+  image,
+}: {
+  onImageAdded: (image: string) => void;
+  image?: string;
 }) {
-    const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-    async function onFileSelect(e: any) {
-        setUploading(true);
-        const file = e.target.files[0];
+  async function onFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-        try {
-            console.log("Uploading file:", file);
-
-            const response = await axios.get(`${BACKEND_URL}/v1/user/presignedUrl`, {
-                headers: {
-                    "Authorization": `Bearer ${localStorage.getItem("token")}`
-                }
-            });
-
-            console.log("Presigned URL response:", response.data);
-            const presignedUrl = response.data.presignedUrl;
-            const formData = new FormData();
-            formData.set("bucket", response.data.fields["bucket"])
-            formData.set("X-Amz-Algorithm", response.data.fields["X-Amz-Algorithm"]);
-            formData.set("X-Amz-Credential", response.data.fields["X-Amz-Credential"]);
-            formData.set("X-Amz-Date", response.data.fields["X-Amz-Date"]);
-            formData.set("success_action_status", response.data.fields["success_action_status"]);
-            // Set Content-Type dynamically based on selected file
-            // Set Content-Type dynamically based on selected file - MUST be before file for some policies, 
-            // but critically, file must be the LAST field for S3.
-            formData.set("Content-Type", file.type);
-            formData.set("key", response.data.fields["key"]);
-            formData.set("Policy", response.data.fields["Policy"]);
-            formData.set("X-Amz-Signature", response.data.fields["X-Amz-Signature"]);
-            formData.append("file", file);
-
-            await axios.post(presignedUrl, formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                }
-            });
-
-            const imageUrl = `${CLOUDFRONT_URL}${response.data.fields["key"]}`;
-            console.log("Image uploaded successfully:", imageUrl);
-            onImageAdded(imageUrl);
-        } catch (e) {
-            console.error("Image upload failed:", e);
-            // Fallback: create a local preview
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const dataUrl = event.target?.result as string;
-                    console.log("Using local preview:", dataUrl);
-                    onImageAdded(dataUrl);
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-        setUploading(false);
+    if (!file.type.startsWith("image/")) {
+      showToast("Only image files can be uploaded", "error");
+      return;
     }
 
-    if (image) {
-        return <img className={"p-2 w-96 rounded"} src={image} />
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showToast("That image is larger than the 50MB limit", "error");
+      return;
     }
 
-    return <div>
-        <div className="w-40 h-40 rounded border text-2xl cursor-pointer">
-            <div className="h-full flex justify-center flex-col relative w-full">
-                <div className="h-full flex justify-center w-full pt-16 text-4xl">
-                    {uploading ? <div className="text-sm">Loading...</div> : <>
-                        +
-                        <input className="w-full h-full bg-red-400 w-40 h-40" type="file" style={{ position: "absolute", opacity: 0, top: 0, left: 0, bottom: 0, right: 0, width: "100%", height: "100%" }} onChange={onFileSelect} />
-                    </>}
-                </div>
-            </div>
-        </div>
-    </div>
+    setUploading(true);
+    try {
+      const { presignedUrl, fields } = await creatorEndpoints.presignedUrl();
+
+      // Forward every field the presigner returned rather than cherry-picking a
+      // fixed list — a policy change on the backend used to silently break the
+      // upload here. S3 requires `file` to be appended last.
+      const formData = new FormData();
+      for (const [key, value] of Object.entries(fields)) {
+        formData.set(key, value);
+      }
+      formData.set("Content-Type", file.type);
+      formData.append("file", file);
+
+      await axios.post(presignedUrl, formData);
+
+      onImageAdded(`${CLOUDFRONT_URL}${fields.key}`);
+    } catch (error: any) {
+      // No silent data-URL fallback. It used to look like a successful upload,
+      // then the task either failed to submit or rendered a broken image for
+      // every worker who opened it.
+      console.error("Image upload failed:", error);
+      showToast(
+        error?.message ?? "Image upload failed. Please try again.",
+        "error",
+      );
+    } finally {
+      setUploading(false);
+      // Allow re-selecting the same file after a failure.
+      event.target.value = "";
+    }
+  }
+
+  if (image) {
+    return <img className="p-2 w-96 rounded" src={image} alt="Task option" />;
+  }
+
+  return (
+    <label
+      className={`w-24 h-24 sm:w-32 sm:h-32 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center transition-colors ${
+        uploading ? "cursor-wait bg-gray-50" : "cursor-pointer hover:border-gray-400"
+      }`}
+    >
+      {uploading ? (
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#f97316]" />
+      ) : (
+        <span className="text-3xl text-gray-400" aria-hidden>
+          +
+        </span>
+      )}
+      <span className="sr-only">Add task image</span>
+      <input
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        disabled={uploading}
+        onChange={onFileSelect}
+      />
+    </label>
+  );
 }

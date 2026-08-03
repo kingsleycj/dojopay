@@ -54,7 +54,8 @@ export const BuiltForEveryoneSection = () => {
             Designed for the Task Economy
           </h2>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Whether you're building AI models, managing teams, or earning on your own terms—DojoPay scales with you.
+            Whether you're building AI models, managing teams, or earning on
+            your own terms—DojoPay scales with you.
           </p>
         </div>
 
@@ -69,8 +70,12 @@ export const BuiltForEveryoneSection = () => {
               <div className="w-12 h-12 bg-[#fff7ed] rounded-xl flex items-center justify-center mb-6 border border-[#fed7aa]">
                 <card.Icon className="h-6 w-6 text-gray-900" />
               </div>
-              <h3 className="text-2xl font-semibold mb-3 text-gray-900">{card.title}</h3>
-              <p className="text-gray-600 mb-5 leading-relaxed">{card.description}</p>
+              <h3 className="text-2xl font-semibold mb-3 text-gray-900">
+                {card.title}
+              </h3>
+              <p className="text-gray-600 mb-5 leading-relaxed">
+                {card.description}
+              </p>
               <ul className="space-y-2 text-sm text-gray-600">
                 {card.items.map((item) => (
                   <li key={item} className="flex items-start">
@@ -90,7 +95,9 @@ export const BuiltForEveryoneSection = () => {
             <div className="text-gray-600">Countries Supported</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold text-gray-900 mb-2">0.001 SOL</div>
+            <div className="text-3xl font-bold text-gray-900 mb-2">
+              0.001 SOL
+            </div>
             <div className="text-gray-600">Minimum Reward</div>
           </div>
           <div className="text-center">

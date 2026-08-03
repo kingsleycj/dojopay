@@ -1,81 +1,23 @@
-'use client';
+"use client";
 
-import { Upload } from '@/components/Upload';
-import { CreatorSidebar } from '@/components/CreatorSidebar';
-import { Appbar } from '@/components/Appbar';
-import { ApplicationFooter } from '@/components/ApplicationFooter';
-import { ToastContainer } from '@/components/Toast';
-import { useState, useEffect } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { AppShell } from "@/components/shared/AppShell";
+import { Upload } from "@/components/Upload";
+import { RoleGuard } from "@/lib/auth";
 
-export default function CreatePage() {
-    const { publicKey } = useWallet();
-    const [userType, setUserType] = useState<'worker' | 'creator' | null>(null);
-
-    useEffect(() => {
-        const checkWalletConnection = () => {
-            if (publicKey) {
-                const creatorToken = localStorage.getItem("token");
-                const workerToken = localStorage.getItem("workerToken");
-                
-                if (creatorToken) {
-                    setUserType('creator');
-                } else if (workerToken) {
-                    setUserType('worker');
-                } else {
-                    setUserType(null);
-                }
-            } else {
-                setUserType(null);
-            }
-        };
-
-        checkWalletConnection();
-        const interval = setInterval(checkWalletConnection, 1000);
-        return () => clearInterval(interval);
-    }, [publicKey]);
-
-    if (userType !== 'creator') {
-        return (
-            <div className="min-h-screen flex flex-col">
-                <Appbar onUserTypeSelect={setUserType} />
-                <div className="flex-grow pt-16 flex justify-center">
-                    <div className="text-center">
-                        <h1 className="text-2xl font-bold text-gray-800 mb-4">Access Denied</h1>
-                        <p className="text-gray-600">Please sign in as a creator to access this page.</p>
-                    </div>
-                </div>
-                <ApplicationFooter />
-            </div>
-        );
-    }
-
-    return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-            <ToastContainer />
-            <Appbar onUserTypeSelect={setUserType} />
-            <div className="flex-grow pt-16">
-                <div className="flex flex-col lg:flex-row">
-                    <CreatorSidebar activeView="home" onViewChange={() => {}} />
-                    <div className="flex-grow lg:ml-64">
-                        <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-8">
-                            {/* Header Section */}
-                            <div className="mb-6 sm:mb-8">
-                                <div className="mb-2">
-                                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Create New Task</h1>
-                                </div>
-                                <p className="text-sm sm:text-base text-gray-600">Set up a new task for workers to complete and earn SOL</p>
-                            </div>
-
-                            {/* Main Content */}
-                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 lg:p-8">
-                                <Upload />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <ApplicationFooter />
+export default function CreateTaskPage() {
+  return (
+    <RoleGuard role="creator">
+      <AppShell role="creator" activeView="create">
+        <div className="max-w-4xl mx-auto p-4 sm:p-6">
+          <header className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Create a task</h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Upload the images workers will choose between, fund the task, and publish.
+            </p>
+          </header>
+          <Upload />
         </div>
-    );
+      </AppShell>
+    </RoleGuard>
+  );
 }
