@@ -1,8 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// DojoPay data model. See CLAUDE.md §3.
+//
+// Money is stored as BigInt lamports. Never store SOL as a float — 9 decimal
+// places do not survive IEEE-754.
 
 generator client {
   provider = "prisma-client-js"
@@ -13,42 +12,93 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// A creator: someone who funds tasks. Keyed by wallet address.
 model User {
-  id      Int       @id @default(autoincrement())
-  address String    @unique
-  tasks   Task[]
-  payouts Payouts[]
+  id        Int       @id @default(autoincrement())
+  address   String    @unique
+  tasks     Task[]
+  payouts   Payouts[]
+  createdAt DateTime  @default(now())
+}
+
+enum TaskStatus {
+  /// Accepting submissions.
+  OPEN
+  /// Reached MAX_SUBMISSIONS_PER_TASK; fully subscribed.
+  COMPLETED
+  /// Passed expiresAt with capacity to spare.
+  EXPIRED
+  /// Creator reclaimed the unspent balance.
+  REFUNDED
 }
 
 model Task {
-  id            Int      @id @default(autoincrement())
-  title         String   @default("Select your preferred choice")
-  options       Option[]
-  user_id       Int
-  signature     String
-  amount        BigInt
-  done          Boolean  @default(false)
-  user          User     @relation(fields: [user_id], references: [id])
-  submissions   Submission[]
-  createdAt     DateTime @default(now())
-  expiresAt     DateTime? // Optional expiration date set by creator
+  id      Int    @id @default(autoincrement())
+  title   String @default("Select your preferred choice")
+  user_id Int
+  user    User   @relation(fields: [user_id], references: [id])
+
+  /// Funding transaction signature. UNIQUE is load-bearing: without it one
+  /// 0.1 SOL payment could be replayed to mint unlimited tasks.
+  signature String @unique
+
+  /// Total lamports funded for this task.
+  amount BigInt
+
+  /// Retained for backwards compatibility with existing reads; derived from
+  /// `status`. Prefer `status` in new code.
+  done Boolean @default(false)
+
+  status TaskStatus @default(OPEN)
+
+  /// Denormalised count so the submission cap can be enforced without a
+  /// COUNT(*) on every worker request. Kept in step inside a transaction.
+  submissionCount Int @default(0)
+
+  /// Set once the on-chain escrow program owns this task's funds (Phase 6).
+  /// Null means the task is funded through the legacy custodial wallet.
+  vaultAddress String?
+
+  options     Option[]
+  submissions Submission[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime?
+
+  @@index([status, expiresAt])
+  @@index([user_id])
 }
 
 model Option {
   id          Int          @id @default(autoincrement())
   image_url   String
   task_id     Int
-  task        Task         @relation(fields: [task_id], references: [id])
+  task        Task         @relation(fields: [task_id], references: [id], onDelete: Cascade)
   submissions Submission[]
+
+  @@index([task_id])
 }
 
+/// A worker: someone who completes tasks. Keyed by wallet address.
 model Worker {
-  id             Int          @id @default(autoincrement())
-  address        String       @unique
-  submissions    Submission[]
-  payouts        Payouts[]
-  pending_amount BigInt // amount in lamports (10^9)
-  locked_amount  BigInt // amount in lamports (10^9)
+  id      Int    @id @default(autoincrement())
+  address String @unique
+
+  /// Earned but not yet withdrawn, in lamports.
+  pending_amount BigInt @default(0)
+
+  /// Cumulative lamports already paid out. Previously named `locked_amount`,
+  /// which implied an escrow lock it never performed.
+  withdrawn_amount BigInt @default(0)
+
+  /// Wallet address of the worker whose share link brought this worker in.
+  /// Recorded once at creation.
+  referred_by String?
+
+  submissions Submission[]
+  payouts     Payouts[]
+  createdAt   DateTime     @default(now())
 }
 
 model Submission {
@@ -58,19 +108,46 @@ model Submission {
   option_id Int
   option    Option @relation(fields: [option_id], references: [id])
   task_id   Int
-  task      Task   @relation(fields: [task_id], references: [id])
-  amount    BigInt
+  task      Task   @relation(fields: [task_id], references: [id], onDelete: Cascade)
 
+  /// Lamports credited to the worker for this submission.
+  amount BigInt
+
+  createdAt DateTime @default(now())
+
+  /// One answer per worker per task.
   @@unique([worker_id, task_id])
+  @@index([worker_id])
+  @@index([task_id])
+}
+
+enum PayoutStatus {
+  /// Transaction submitted, not yet confirmed.
+  PROCESSING
+  /// Confirmed on chain.
+  SUCCESS
+  /// Failed; the worker's pending balance was restored.
+  FAILED
 }
 
 model Payouts {
-  id        Int    @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   user_id   Int?
-  user      User?  @relation(fields: [user_id], references: [id])
+  user      User?   @relation(fields: [user_id], references: [id])
   worker_id Int?
   worker    Worker? @relation(fields: [worker_id], references: [id])
-  amount    BigInt
-  signature String
-  status    String @default("Processing") // "Processing", "Success", "Failure"
+
+  amount BigInt
+
+  /// On-chain transaction signature. UNIQUE gives payout idempotency: a retried
+  /// request cannot record — or pay — the same withdrawal twice.
+  signature String @unique
+
+  status PayoutStatus @default(PROCESSING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([worker_id])
+  @@index([status])
 }

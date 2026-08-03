@@ -1,71 +1,51 @@
-import express from 'express'
-import userRouter from './routers/user.js'
-import workerRouter from './routers/worker.js'
-import cors from 'cors'
-import { connectDB, prismaClient } from './lib/prisma.js'
-import * as fs from 'fs'
+import app from "./app.js";
+import { assertConfigValid, config } from "./config/index.js";
+import { connectDB, disconnectDB } from "./lib/prisma.js";
+import { logger } from "./lib/logger.js";
+import { expireStaleTasks } from "./services/task.service.js";
 
-const app = express();
-app.use(express.json({ limit: '50mb', type: 'application/json' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+/**
+ * Server bootstrap. Nothing but wiring — the app itself lives in `app.ts`.
+ */
 
-// CORS configuration for development and production
-const allowedOrigins = [
-    'http://localhost:3001',
-    'http://localhost:3000',  
-    'http://localhost:3002',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    // Production URLs
-    'https://dojopay.vercel.app',
-    process.env.FRONTEND_URL
-].filter(Boolean);
+/** How often to sweep expired tasks into their terminal state. */
+const EXPIRY_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
-app.use(cors({
-    origin: allowedOrigins,
-    credentials: true
-}));
+async function main() {
+  assertConfigValid();
+  await connectDB();
 
-export const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
+  const sweeper = setInterval(() => {
+    expireStaleTasks().catch((error) =>
+      logger.error("Expiry sweep failed", {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }, EXPIRY_SWEEP_INTERVAL_MS);
+  sweeper.unref();
 
-// Health check endpoint
-app.get('/health', async (req, res) => {
-    try {
-        // Check database connectivity
-        await prismaClient.$queryRaw`SELECT 1`;
-        
-        res.status(200).json({
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            environment: process.env.NODE_ENV || 'development',
-            version: process.env.npm_package_version || '1.0.0',
-            database: 'connected'
-        });
-    } catch (error) {
-        res.status(503).json({
-            status: 'unhealthy',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            environment: process.env.NODE_ENV || 'development',
-            database: 'disconnected',
-            error: 'Database connection failed'
-        });
-    }
+  const server = app.listen(config.port, () => {
+    logger.info("Server listening", { port: config.port, environment: config.env });
+  });
+
+  const shutdown = async (signal: string) => {
+    logger.info("Shutting down", { signal });
+    clearInterval(sweeper);
+    server.close();
+    await disconnectDB();
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+}
+
+main().catch((error) => {
+  logger.error("Failed to start server", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+  process.exit(1);
 });
 
-app.use('/v1/user', userRouter)
-app.use('/v1/worker', workerRouter)
-
-const startServer = async () => {
-    await connectDB();
-    
-    const port = process.env.PORT || 3000;
-    app.listen(port, () => {
-      console.log(`Server is running on port ${port}`);
-    });
-};
-
-startServer();
-
+export { app };
 export default app;

@@ -250,37 +250,46 @@ Each phase is one commit (or a small series) and must leave both test suites gre
 - [x] Record baseline: 71 backend + 42 frontend tests passing
 - [x] Author this document
 
-### Phase 1 — Backend foundation `TODO`
+### Phase 1 — Backend foundation `DONE`
 Goal: make the backend's structure incapable of producing the class of bugs found in the audit.
-- [ ] `config/` module: parse + validate env at boot, fail fast on missing values
-- [ ] Fix `WORKER_JWT_SECRET` — real env secret, not derived from the Express app object
-- [ ] Break the `index.ts` ↔ router ↔ middleware circular imports
-- [ ] Split routers into `routes/` + `controllers/` + `services/`
-- [ ] `lib/`: prisma, solana connection (honours `RPC_URL`), s3, structured logger
-- [ ] Central error-handling middleware; delete scattered try/catch duplication
-- [ ] `utils/serialize.ts` for BigInt-safe responses
-- [ ] Rate limiting on auth and payout routes (README already claims this exists)
+- [x] `config/` module: parse + validate env at boot, fail fast on missing values
+- [x] Fix `WORKER_JWT_SECRET` — real env secret, not derived from the Express app object
+- [x] Break the `index.ts` ↔ router ↔ middleware circular imports (`app.ts` split from bootstrap)
+- [x] Split routers into `routes/` + `controllers/` + `services/`
+- [x] `lib/`: prisma, solana connection (honours `RPC_URL`), s3, structured logger
+- [x] Central error-handling middleware; delete scattered try/catch duplication
+- [x] `utils/serialize.ts` for BigInt-safe responses
+- [x] Rate limiting on auth, payout and task-creation routes
+- [x] Move `dotenv`/`prisma`/`tsx` to runtime deps — Render sets `NODE_ENV=production`,
+      which skips devDependencies, so the old layout relied on `npx` fetching them at boot
 
-### Phase 2 — Data model & migrations `TODO`
+### Phase 2 — Data model & migrations `DONE`
 Goal: a schema that matches the database it actually runs on.
-- [ ] Delete SQLite-syntax migrations and `prisma/dev.db`; generate a clean Postgres baseline
-- [ ] `Task.signature` unique — closes the funding-replay hole
-- [ ] `Payouts.signature` unique — payout idempotency
-- [ ] Add `createdAt` to `Submission` and `Payouts` so ledger dates stop being fabricated
-- [ ] Add `Task.submissionCount` (denormalised) for cheap cap checks
-- [ ] `PayoutStatus` enum: `Processing | Success | Failed`
+- [x] Delete SQLite-syntax migrations and `prisma/dev.db`; generate a clean Postgres baseline
+- [x] `Task.signature` unique — closes the funding-replay hole
+- [x] `Payouts.signature` unique — payout idempotency
+- [x] Add `createdAt` to `Submission` and `Payouts` so ledger dates stop being fabricated
+- [x] Add `Task.submissionCount` (denormalised) for cheap cap checks
+- [x] `PayoutStatus` enum: `PROCESSING | SUCCESS | FAILED`; `TaskStatus` enum added alongside
+- [x] `Worker.referred_by` and `Task.vaultAddress` for Phases 5 and 6
 
-### Phase 3 — Correctness & economics `TODO`
+> **Applying it:** the baseline in `prisma/migrations/20260803000000_postgres_baseline` is a
+> from-scratch schema. Per Decision 2 the dev database is disposable, so run
+> `npx prisma migrate reset` locally and `npx prisma migrate deploy` on Render. This DROPS
+> existing rows — do not run it against a database whose contents matter.
+
+### Phase 3 — Correctness & economics `DONE`
 Goal: the ledger tells the truth and the platform wallet cannot be drained.
-- [ ] Enforce `MAX_SUBMISSIONS_PER_TASK`; mark task `done` when full
-- [ ] Reject submissions to full tasks
-- [ ] Payout: confirm on chain, then transition `Processing → Success | Failed`
-- [ ] Payout idempotency — a retry must not double-pay
-- [ ] Minimum withdrawal threshold; reject dust withdrawals that cost more in fees
-- [ ] Rename `locked_amount` → `withdrawn_amount`
-- [ ] Delete the unauthenticated `/v1/worker/test-earnings` debug endpoint
-- [ ] Collapse duplicate `PATCH`/`PUT /task/:id` handlers
-- [ ] Analytics use real `createdAt`; remove placeholder buckets and the hardcoded `85%`
+- [x] Enforce `MAX_SUBMISSIONS_PER_TASK`; mark task `COMPLETED` when full
+- [x] Reject submissions to full tasks, via a conditional `updateMany` that is race-safe
+- [x] Payout: confirm on chain, then transition `PROCESSING → SUCCESS | FAILED`
+- [x] Payout idempotency — debit before broadcast, restore balance on failure
+- [x] Minimum withdrawal threshold (0.001 SOL) so dust withdrawals cannot cost more than they pay
+- [x] Rename `locked_amount` → `withdrawn_amount`
+- [x] Delete the unauthenticated `/v1/worker/test-earnings` debug endpoint
+- [x] Collapse duplicate `PATCH`/`PUT /task/:id` handlers onto one implementation
+- [x] Analytics use real `createdAt`; placeholder buckets and the hardcoded `85%` removed
+- [x] Funding verification now checks `meta.err` — a *failed* transaction could previously fund a task
 
 ### Phase 4 — Frontend foundation `TODO`
 Goal: one way to do each thing.
@@ -336,22 +345,25 @@ Goal: remove the platform's ability to abscond with or lose task funds.
 
 Discovered in the audit of `main`. Each links to the phase that resolves it.
 
-| # | Issue | Severity | Phase |
-|---|---|---|---|
-| 1 | `WORKER_JWT_SECRET` derives from a default import of `index.ts`, which exports the **Express app**, not the secret. The secret is therefore Express's own source text — publicly reproducible, so worker tokens are forgeable. | Critical | 1 |
-| 2 | `Task.signature` not unique — one 0.1 SOL payment can create unlimited tasks. | Critical | 2 |
-| 3 | `MAX_SUBMISSIONS_PER_TASK` never enforced and `done` never set — unbounded workers claim 0.001 SOL each against a task funded with 0.1 SOL, draining the platform wallet. | Critical | 3 |
-| 4 | Unauthenticated `/v1/worker/test-earnings` exposes worker 1's ledger. | High | 3 |
-| 5 | Earnings-page withdrawal posts no signature; backend requires one, so it always 400s. Only the Appbar path works. | High | 4 |
-| 6 | Payouts are written `Processing` and never updated; creator earnings branch on `Success`, so paid work never shows as paid. | High | 3 |
-| 7 | Migrations are SQLite DDL (`AUTOINCREMENT`) against a `postgresql` datasource; `prisma/dev.db` is checked in. | High | 2 |
-| 8 | `JWT_SECRET` falls back to `"fallback-secret-for-dev"` in production if unset. | High | 1 |
-| 9 | `app/(root)/layout.tsx` selects **Mainnet** while every other path uses Devnet. | Medium | 4 |
-| 10 | Analytics fabricate data: weekly/monthly buckets dump everything into the current period, `/tasks` overwrites `createdAt` with `new Date()`, `retentionRate` is hardcoded `"85%"`. | Medium | 3 |
-| 11 | `PATCH` and `PUT /task/:id` are byte-identical duplicates. | Low | 3 |
-| 12 | Pages poll `localStorage` on a 1-second `setInterval` to detect auth changes. | Medium | 4 |
-| 13 | No rate limiting despite the README claiming it. | Medium | 1 |
-| 14 | `DEPLOYMENT.md` holds live-looking AWS keys, a Neon URL, and the platform wallet private key. Gitignored and never committed, but present in plaintext and duplicated into Render. | High | 7 |
+| # | Issue | Severity | Phase | Status |
+|---|---|---|---|---|
+| 1 | `WORKER_JWT_SECRET` derives from a default import of `index.ts`, which exports the **Express app**, not the secret. The secret is therefore Express's own source text — publicly reproducible, so worker tokens are forgeable. | Critical | 1 | FIXED |
+| 2 | `Task.signature` not unique — one 0.1 SOL payment can create unlimited tasks. | Critical | 2 | FIXED |
+| 3 | `MAX_SUBMISSIONS_PER_TASK` never enforced and `done` never set — unbounded workers claim 0.001 SOL each against a task funded with 0.1 SOL, draining the platform wallet. | Critical | 3 | FIXED |
+| 4 | Unauthenticated `/v1/worker/test-earnings` exposes worker 1's ledger. | High | 3 | FIXED |
+| 5 | Earnings-page withdrawal posts no signature; backend requires one, so it always 400s. Only the Appbar path works. | High | 4 | open |
+| 6 | Payouts are written `Processing` and never updated; creator earnings branch on `Success`, so paid work never shows as paid. | High | 3 | FIXED |
+| 7 | Migrations are SQLite DDL (`AUTOINCREMENT`) against a `postgresql` datasource; `prisma/dev.db` is checked in. | High | 2 | FIXED |
+| 8 | `JWT_SECRET` falls back to `"fallback-secret-for-dev"` in production if unset. | High | 1 | FIXED |
+| 9 | `app/(root)/layout.tsx` selects **Mainnet** while every other path uses Devnet. | Medium | 4 | open |
+| 10 | Analytics fabricate data: weekly/monthly buckets dump everything into the current period, `/tasks` overwrites `createdAt` with `new Date()`, `retentionRate` is hardcoded `"85%"`. | Medium | 3 | FIXED |
+| 11 | `PATCH` and `PUT /task/:id` are byte-identical duplicates. | Low | 3 | FIXED |
+| 12 | Pages poll `localStorage` on a 1-second `setInterval` to detect auth changes. | Medium | 4 | open |
+| 13 | No rate limiting despite the README claiming it. | Medium | 1 | FIXED |
+| 14 | `DEPLOYMENT.md` holds live-looking AWS keys, a Neon URL, and the platform wallet private key. Gitignored and never committed, but present in plaintext and duplicated into Render. | High | 7 | open |
+| 15 | Funding verification ignored `meta.err`, so a transaction that **failed** on chain could fund a task if its balance deltas lined up. | High | 3 | FIXED |
+| 16 | S3 upload keys used `Math.random()`, so two uploads could collide and silently overwrite. | Low | 1 | FIXED |
+| 17 | `dotenv`/`prisma` were devDependencies but needed at runtime; Render's `NODE_ENV=production` skips those. | Medium | 1 | FIXED |
 
 ---
 
