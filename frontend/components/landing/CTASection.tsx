@@ -1,28 +1,74 @@
-export const CTASection = () => {
+"use client";
+
+type CTASectionProps = {
+  onGetStarted?: () => void;
+  onJoinAsWorker?: () => void;
+};
+
+/**
+ * Closing CTA.
+ *
+ * Buttons wired to the same sign-up funnel as the hero — the previous version
+ * used `href="#"` on both, so neither did anything. Set on receipt stock to
+ * bookend the guarantees section and close the page on paper rather than desk.
+ */
+export const CTASection = ({ onGetStarted, onJoinAsWorker }: CTASectionProps) => {
   return (
-    <section className="py-32 bg-gray-900 text-white text-center">
-      <div className="max-w-7xl mx-auto px-6">
-        <h2 className="text-5xl font-bold tracking-tight mb-6">
-          Start Building with DojoPay
-        </h2>
-        <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">
-          Join creators and workers using the fastest, most transparent task
-          platform in Web3.
+    <section className="dojo-slip">
+      {/* Same max width and padding as every other section, so the left rag of
+          the page stays unbroken. The copy is constrained separately below. */}
+      <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 lg:py-24">
+        <p className="dojo-label mb-3" style={{ color: "var(--ink-dim)" }}>
+          Two ways to start
         </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <a
-            href="#"
-            className="bg-white text-gray-900 px-8 py-4 rounded-xl font-semibold hover:-translate-y-1 hover:shadow-2xl transition-all"
+
+        <h2 className="dojo-display text-[2.25rem] sm:text-[2.9rem]" style={{ color: "var(--ink)" }}>
+          Pick a side of the ledger.
+        </h2>
+
+        <p className="mt-5 max-w-xl text-[1.0625rem] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+          Earning takes an email and about thirty seconds. Posting a task takes 0.1 SOL on
+          devnet and a wallet to fund it from.
+        </p>
+
+        <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+          <button
+            onClick={onJoinAsWorker}
+            className="group inline-flex items-center justify-center gap-2 rounded-[3px] px-6 py-3.5 text-[15px] font-semibold transition-transform duration-150 hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={
+              {
+                backgroundColor: "var(--ink)",
+                color: "var(--slip)",
+                "--tw-ring-color": "var(--ink)",
+                "--tw-ring-offset-color": "var(--slip)",
+              } as React.CSSProperties
+            }
           >
-            Create Your First Task
-          </a>
-          <a
-            href="#"
-            className="bg-transparent text-white px-8 py-4 rounded-xl font-semibold border-2 border-white/30 hover:border-white hover:bg-white/5 hover:-translate-y-1 transition-all"
+            Start earning
+            <span aria-hidden className="transition-transform duration-150 group-hover:translate-x-0.5">
+              →
+            </span>
+          </button>
+
+          <button
+            onClick={onGetStarted}
+            className="inline-flex items-center justify-center rounded-[3px] border px-6 py-3.5 text-[15px] font-semibold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={
+              {
+                borderColor: "var(--slip-line)",
+                color: "var(--ink)",
+                "--tw-ring-color": "var(--ink)",
+                "--tw-ring-offset-color": "var(--slip)",
+              } as React.CSSProperties
+            }
           >
-            Earn by Completing Tasks
-          </a>
+            Post a task
+          </button>
         </div>
+
+        <p className="dojo-mono mt-6 text-[11.5px]" style={{ color: "var(--ink-dim)" }}>
+          Devnet only. No real funds are at stake yet.
+        </p>
       </div>
     </section>
   );

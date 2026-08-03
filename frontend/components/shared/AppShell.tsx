@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { WalletDisconnectButton, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { CreatorSidebar } from "@/components/CreatorSidebar";
 import { WorkerSidebar } from "@/components/WorkerSidebar";
 import { ApplicationFooter } from "@/components/ApplicationFooter";

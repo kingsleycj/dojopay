@@ -142,8 +142,9 @@ FRONTEND_URL=http://localhost:5174
 token be replayed against the admin API.
 
 Without `RESEND_API_KEY` the verification and reset links are printed to the
-server log instead of emailed, which is fine for local development. The server
-refuses to boot in production without it.
+server log instead of emailed, which is fine for local development — the
+server warns rather than refusing to start. To send real email, follow
+[docs/email-setup.md](docs/email-setup.md).
 
 Frontend `.env.local`:
 

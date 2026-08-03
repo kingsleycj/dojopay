@@ -4,11 +4,19 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Futura:wght@400;500;600;700;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=GT+America:wght@300;400;500;600;700;800;900&display=swap');
+
+/*
+ * Landing page faces.
+ *
+ * Archivo for display — a sturdy, slightly industrial grotesk that holds up at
+ * heavy weight and tight tracking, where Inter goes generic. IBM Plex Sans and
+ * Plex Mono for body and data: Plex was drawn for an institution's systems, so
+ * it carries the right register for a page about money reconciling, and its
+ * mono numerals align in columns, which the receipt depends on.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @layer base {
   :root {
@@ -167,5 +175,200 @@
   }
   50% {
     transform: translateY(-10px);
+  }
+}
+
+/* ==========================================================================
+   Landing page
+   ==========================================================================
+   Scoped under `.dojo` so none of this reaches the signed-in app, which keeps
+   using the shadcn token set above. The landing page has a deliberately
+   different visual language; leaking these values into the dashboards would
+   restyle every card and button in the product.
+   ========================================================================== */
+
+.dojo {
+  /* Warm graphite desk. Olive-brown undertone, not blue-black — this is a
+     worn ledger desk, not a terminal. */
+  --desk: #1c1a17;
+  --desk-raised: #24211d;
+  --desk-line: #35312b;
+
+  /* Receipt stock. Used only for panels that represent a printed artifact. */
+  --slip: #f6f3ec;
+  --slip-line: #ddd7ca;
+
+  --ink: #16150f;
+  --ink-dim: #6b675c;
+  --paper-dim: #9a9488;
+
+  /* Stamped orange — carries the existing brand lineage, but pigmented rather
+     than the web-gradient #f97316, so it reads as ink pressed into paper. */
+  --sol: #ff6b1a;
+  --sol-deep: #d4530c;
+
+  /* Confirmation green. Money interfaces need a settled state that is not the
+     brand colour, or "done" and "brand" become indistinguishable. */
+  --settled: #2fa37a;
+
+  background-color: var(--desk);
+  color: var(--slip);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dojo ::selection {
+  background-color: var(--sol);
+  color: var(--ink);
+}
+
+/* Display face. Tight tracking and heavy weight are the point — at lighter
+   settings Archivo reads like any other grotesk. */
+.dojo-display {
+  font-family: "Archivo", system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 0.94;
+}
+
+/* Every number on this page. Tabular figures so columns of lamports line up
+   and the running total does not jitter as digits change. */
+.dojo-mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small caps-ish label used for eyebrows and column headers. */
+.dojo-label {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* Ledger ruling. A hairline that encodes "this is a row in a book", used only
+   where the content genuinely is tabular. */
+.dojo-rule {
+  border-color: var(--desk-line);
+}
+
+/* The paper texture on receipt panels: faint horizontal ruling, like stock. */
+.dojo-slip {
+  background-color: var(--slip);
+  color: var(--ink);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    rgba(0, 0, 0, 0.035) 27px,
+    rgba(0, 0, 0, 0.035) 28px
+  );
+}
+
+/* Torn edge along the bottom of a receipt, drawn with a mask so it needs no
+   image and scales cleanly. */
+.dojo-torn {
+  --tooth: 10px;
+  -webkit-mask-image: radial-gradient(
+    circle at var(--tooth) 100%,
+    transparent 0,
+    transparent calc(var(--tooth) * 0.55),
+    #000 calc(var(--tooth) * 0.56)
+  );
+  mask-image: radial-gradient(
+    circle at var(--tooth) 100%,
+    transparent 0,
+    transparent calc(var(--tooth) * 0.55),
+    #000 calc(var(--tooth) * 0.56)
+  );
+  -webkit-mask-size: calc(var(--tooth) * 2) 100%;
+  mask-size: calc(var(--tooth) * 2) 100%;
+  -webkit-mask-repeat: repeat-x;
+  mask-repeat: repeat-x;
+}
+
+/* A row printing onto the receipt. Short and mechanical — a print head strike,
+   not a UI fade. */
+@keyframes dojo-print {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    filter: blur(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/*
+ * `forwards`, deliberately not `both`.
+ *
+ * With `both` the element holds the `from` keyframe — opacity 0 — until the
+ * animation starts. Anywhere animations are suspended or never fire (headless
+ * capture, some embedded webviews, an aggressive extension) the printed rows
+ * stay permanently invisible, which silently deletes the most important
+ * content on the page. `forwards` leaves the element at its natural, visible
+ * style until the animation runs, so the worst case is no animation rather
+ * than no content.
+ */
+.dojo-print {
+  animation: dojo-print 180ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+/* The confirmation stamp landing on a settled receipt. */
+@keyframes dojo-stamp {
+  0% {
+    opacity: 0;
+    transform: rotate(-14deg) scale(1.6);
+  }
+  60% {
+    opacity: 1;
+    transform: rotate(-14deg) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-14deg) scale(1);
+  }
+}
+
+.dojo-stamp {
+  animation: dojo-stamp 260ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+/* Cursor blink on the "printing" line. */
+@keyframes dojo-blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0.15; }
+  100% { opacity: 1; }
+}
+
+.dojo-blink {
+  animation: dojo-blink 1.1s steps(1, end) infinite;
+}
+
+/*
+ * Reduced motion.
+ *
+ * The receipt is the page's argument, so it must still make that argument
+ * standing still: the component renders its completed, fully-reconciled state
+ * and these animations are simply switched off, rather than the whole piece
+ * being hidden.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .dojo-print,
+  .dojo-stamp,
+  .dojo-blink {
+    animation: none !important;
+  }
+
+  .dojo *,
+  .dojo *::before,
+  .dojo *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,6 +1,6 @@
 import express, { type Express } from "express";
 import cors from "cors";
-import { config } from "./config/index.js";
+import { config, isOriginAllowed } from "./config/index.js";
 import { prismaClient } from "./lib/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { generalRateLimit } from "./middleware/rateLimit.js";
@@ -24,7 +24,9 @@ export function createApp(): Express {
 
   app.use(
     cors({
-      origin: config.cors.allowedOrigins,
+      // Function rather than a static list so localhost on any port works in
+      // development without silently blocking the whole API. See isOriginAllowed.
+      origin: (origin, callback) => callback(null, isOriginAllowed(origin ?? undefined)),
       credentials: true,
     }),
   );

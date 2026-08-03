@@ -5,3 +5,6 @@ node_modules
 /src/generated/prisma
 
 /prisma/dev.db
+# Backups of .env made by tooling — these contain the same secrets.
+.env.backup-*
+.env.*.backup

@@ -5,8 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ToastContainer } from "@/components/Toast";
 import { Navbar } from "@/components/landing/Navbar";
 import { HeroSection } from "@/components/landing/HeroSection";
-import { CredibilitySection } from "@/components/landing/CredibilitySection";
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
+import { CredibilitySection } from "@/components/landing/CredibilitySection";
 import { BuiltForEveryoneSection } from "@/components/landing/BuiltForEveryoneSection";
 import { WhySolanaSection } from "@/components/landing/WhySolanaSection";
 import { CTASection } from "@/components/landing/CTASection";
@@ -16,10 +16,11 @@ import { useAuth } from "@/lib/auth";
 /**
  * Landing page.
  *
- * Sign-in now lives on dedicated `/auth/*` routes rather than a modal here.
- * With email, Google, and wallet options plus verification and reset flows,
- * a modal could no longer hold the whole surface — and real pages are
- * linkable, which the share flow depends on.
+ * Section order is an argument, not a template: show the loop working (hero),
+ * explain it (how), prove it is safe (guarantees), say who it is for
+ * (audience), admit what is unfinished (roadmap), then ask (CTA). The
+ * guarantees and CTA sections invert to receipt stock so the page alternates
+ * material rather than repeating one card rhythm four times.
  */
 function Landing() {
   const router = useRouter();
@@ -32,10 +33,17 @@ function Landing() {
   // Already signed in: go straight to the dashboard for the current mode.
   useEffect(() => {
     if (isReady && isAuthenticated) {
-      router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : `/${mode}/dashboard`);
+      router.replace(
+        next && next.startsWith("/") && !next.startsWith("//") ? next : `/${mode}/dashboard`,
+      );
     }
   }, [isReady, isAuthenticated, router, mode, next]);
 
+  /**
+   * Top of the Phase 5 share funnel. `next` carries a shared task through
+   * sign-up so the visitor lands back on it, and `ref` attributes the referral —
+   * both must survive every CTA on this page.
+   */
   const authLink = (path: "login" | "register") => {
     const params = new URLSearchParams();
     if (next) params.set("next", next);
@@ -44,30 +52,33 @@ function Landing() {
     return `/auth/${path}${query ? `?${query}` : ""}`;
   };
 
+  const goRegister = () => router.push(authLink("register"));
+  const goLogin = () => router.push(authLink("login"));
+
   if (isReady && isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#f97316]" />
+      <div className="dojo flex min-h-screen items-center justify-center">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-b-2"
+          style={{ borderColor: "var(--sol)" }}
+        />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div id="top" className="dojo min-h-screen">
       <ToastContainer />
-      <Navbar onGetStarted={() => router.push(authLink("register"))} />
+      <Navbar onGetStarted={goRegister} onSignIn={goLogin} />
 
-      <div className="flex-grow">
-        <HeroSection
-          onGetStarted={() => router.push(authLink("register"))}
-          onJoinAsWorker={() => router.push(authLink("register"))}
-        />
-        <CredibilitySection />
+      <main>
+        <HeroSection onGetStarted={goRegister} onJoinAsWorker={goRegister} />
         <HowItWorksSection />
+        <CredibilitySection />
         <BuiltForEveryoneSection />
         <WhySolanaSection />
-        <CTASection />
-      </div>
+        <CTASection onGetStarted={goRegister} onJoinAsWorker={goRegister} />
+      </main>
 
       <Footer />
     </div>
@@ -77,7 +88,7 @@ function Landing() {
 export default function Page() {
   // `useSearchParams` requires a Suspense boundary in the App Router.
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+    <Suspense fallback={<div className="dojo min-h-screen" />}>
       <Landing />
     </Suspense>
   );

@@ -1,106 +1,135 @@
-import superteamLogo from "@/assets/superteam-logo.png";
+"use client";
+
+/**
+ * Guarantees.
+ *
+ * The section doing the most persuasive work, so it gets the page's only
+ * inversion: printed on receipt stock instead of the graphite desk. It reads as
+ * a document — a statement of terms — rather than another row of feature cards.
+ *
+ * Every line maps to something CLAUDE.md marks `DONE`. Nothing about escrow,
+ * mainnet, or audits appears, because none of that is true yet; the roadmap
+ * section says so plainly instead.
+ */
+
+interface Guarantee {
+  claim: string;
+  mechanism: string;
+  /** The concrete failure this prevents. Specificity is the persuasion. */
+  prevents: string;
+}
+
+const GUARANTEES: Guarantee[] = [
+  {
+    claim: "A task can never pay out more than it was funded for",
+    mechanism: "The 100-slot cap is enforced when a submission is written, not when it is read.",
+    prevents: "Two workers racing for the last slot and both getting paid.",
+  },
+  {
+    claim: "One payment funds exactly one task",
+    mechanism: "A funding transaction's signature can only ever be used once.",
+    prevents: "Replaying a single 0.1 SOL transfer to mint unlimited tasks.",
+  },
+  {
+    claim: "A failed transfer cannot fund anything",
+    mechanism: "Funding checks the transaction actually succeeded on chain, not just that it exists.",
+    prevents: "A reverted transaction being counted as payment.",
+  },
+  {
+    claim: "A retried withdrawal cannot pay twice",
+    mechanism: "Your balance is debited before the transfer is broadcast, and restored if it fails.",
+    prevents: "A network timeout becoming a double payout — or a lost balance.",
+  },
+  {
+    claim: "Withdrawals go where you said, for what you said",
+    mechanism: "You sign a message naming the exact amount and the destination wallet.",
+    prevents: "An old signature being reused to authorise a larger withdrawal later.",
+  },
+  {
+    claim: "Nothing happens without a record",
+    mechanism: "Every sign-in, submission, and payout is written to an append-only log.",
+    prevents: "Activity on your account that nobody can reconstruct afterwards.",
+  },
+];
 
 export const CredibilitySection = () => {
   return (
-    <section className="py-32 bg-white">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="text-center">
-          <div className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4">
-            Credibility & Trust
-          </div>
-          <h2 className="text-5xl font-bold tracking-tight mb-4 text-gray-900">
-            Powered by the Best
-          </h2>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            DojoPay is built on Solana and initiated through the SuperteamNG
-            Builders Cohort.
+    <section id="guarantees" className="dojo-slip">
+      <div className="mx-auto max-w-5xl px-5 py-16 sm:px-8 lg:py-24">
+        <header className="mb-10 max-w-2xl">
+          <p className="dojo-label mb-3" style={{ color: "var(--ink-dim)" }}>
+            What we guarantee today
           </p>
-        </div>
+          <h2 className="dojo-display text-[2rem] sm:text-[2.5rem]" style={{ color: "var(--ink)" }}>
+            The boring parts, done properly
+          </h2>
+          <p className="mt-4 text-[1.0625rem] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+            Anyone can call a platform secure. These are the specific things that cannot
+            happen here, and the specific reason each one cannot.
+          </p>
+        </header>
 
-        <div className="mt-14 grid md:grid-cols-2 gap-10 items-center">
-          {/* Solana */}
-          <div className="flex flex-col items-center text-center">
-            <div className="relative mb-4">
-              <div className="absolute inset-0 rounded-full bg-[#f97316]/10 blur-2xl animate-pulse" />
-              <div className="absolute -inset-2 rounded-full bg-[#f97316]/10 blur-3xl" />
-              <svg
-                className="relative h-16 w-16"
-                viewBox="0 0 397.7 311.7"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <defs>
-                  <linearGradient
-                    id="solCred1"
-                    x1="360.879"
-                    y1="351.455"
-                    x2="141.213"
-                    y2="-69.2936"
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <stop offset="0" stopColor="#14F195" />
-                    <stop offset="1" stopColor="#9945FF" />
-                  </linearGradient>
-                  <linearGradient
-                    id="solCred2"
-                    x1="264.829"
-                    y1="401.601"
-                    x2="45.163"
-                    y2="-19.1475"
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <stop offset="0" stopColor="#14F195" />
-                    <stop offset="1" stopColor="#9945FF" />
-                  </linearGradient>
-                  <linearGradient
-                    id="solCred3"
-                    x1="312.548"
-                    y1="376.688"
-                    x2="92.8822"
-                    y2="-44.061"
-                    gradientUnits="userSpaceOnUse"
-                  >
-                    <stop offset="0" stopColor="#14F195" />
-                    <stop offset="1" stopColor="#9945FF" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7z"
-                  fill="url(#solCred1)"
-                />
-                <path
-                  d="M64.6 3.8C67.1 1.4 70.4 0 73.8 0h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1L64.6 3.8z"
-                  fill="url(#solCred2)"
-                />
-                <path
-                  d="M333.1 120.1c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8 0-8.7 7-4.6 11.1l62.7 62.7c2.4 2.4 5.7 3.8 9.2 3.8h317.4c5.8 0 8.7-7 4.6-11.1l-62.7-62.7z"
-                  fill="url(#solCred3)"
-                />
-              </svg>
+        {/* This genuinely is a table of terms, so it is set as one. */}
+        <dl className="border-t" style={{ borderColor: "var(--slip-line)" }}>
+          {GUARANTEES.map((item) => (
+            <div
+              key={item.claim}
+              className="grid gap-2 border-b py-5 sm:grid-cols-[1.1fr_1fr] sm:gap-8"
+              style={{ borderColor: "var(--slip-line)" }}
+            >
+              <dt className="flex gap-3">
+                <span
+                  className="dojo-mono mt-[3px] shrink-0 text-[13px]"
+                  style={{ color: "var(--settled)" }}
+                  aria-hidden
+                >
+                  ✓
+                </span>
+                <span
+                  className="text-[15.5px] font-semibold leading-snug"
+                  style={{ color: "var(--ink)" }}
+                >
+                  {item.claim}
+                </span>
+              </dt>
+              <dd className="pl-7 sm:pl-0">
+                <p className="text-[14px] leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+                  {item.mechanism}
+                </p>
+                <p
+                  className="dojo-mono mt-1.5 text-[11.5px] leading-relaxed"
+                  style={{ color: "var(--ink-dim)" }}
+                >
+                  prevents: {item.prevents}
+                </p>
+              </dd>
             </div>
-            <div className="text-gray-900 font-semibold">Powered by Solana</div>
-            <div className="mt-1 text-gray-500 text-sm">
-              Fast. Low fees. Scales for micro-payments.
-            </div>
-          </div>
+          ))}
+        </dl>
 
-          {/* SuperteamNG */}
-          <div className="flex flex-col items-center text-center">
-            <div className="relative mb-4">
-              <div className="absolute inset-0 rounded-full bg-gray-900/10 blur-2xl" />
-              <img
-                src={superteamLogo.src}
-                alt="SuperteamNG"
-                className="relative h-12 w-auto"
-              />
-            </div>
-            <div className="text-gray-900 font-semibold">
-              SuperteamNG Builders Cohort
-            </div>
-            <div className="mt-1 text-gray-500 text-sm">
-              Community-driven, quality-first
-            </div>
-          </div>
+        {/* The caveat gets the same weight as the guarantees rather than being
+            buried in a footer — honesty is the persuasive move here. */}
+        <div
+          className="mt-8 rounded-[3px] border-l-[3px] p-5"
+          style={{ borderColor: "var(--sol-deep)", backgroundColor: "rgba(212,83,12,0.06)" }}
+        >
+          <p className="dojo-label mb-2" style={{ color: "var(--sol-deep)" }}>
+            What we do not claim
+          </p>
+          <p className="text-[14.5px] leading-relaxed" style={{ color: "var(--ink)" }}>
+            DojoPay runs on Solana <strong>devnet</strong>, and task funds are currently held
+            by a platform wallet rather than a smart contract. That means you are trusting us
+            with custody today. We think that is worth saying out loud — and it is the next
+            thing we are fixing.
+          </p>
+          <a
+            href="#roadmap"
+            className="dojo-mono mt-3 inline-flex items-center gap-1.5 text-[12px] font-medium underline underline-offset-4"
+            style={{ color: "var(--sol-deep)" }}
+          >
+            See where that work stands
+            <span aria-hidden>→</span>
+          </a>
         </div>
       </div>
     </section>
