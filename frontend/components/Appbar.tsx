@@ -24,7 +24,10 @@ export const Appbar = ({
   const [signingIn, setSigningIn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userType, setUserType] = useState<"creator" | "worker" | null>(null);
-  const [workerEarnings, setWorkerEarnings] = useState<{ pendingAmount: string; lockedAmount: string } | null>(null);
+  const [workerEarnings, setWorkerEarnings] = useState<{
+    pendingAmount: string;
+    lockedAmount: string;
+  } | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
 
   useEffect(() => {
@@ -42,101 +45,111 @@ export const Appbar = ({
     }
   }, [publicKey]);
 
-async function signAndSend(): Promise<boolean> {
+  async function signAndSend(): Promise<boolean> {
     if (!publicKey) {
-        return false;
+      return false;
     }
     if (localStorage.getItem("token")) {
-        return true;
+      return true;
     }
     setSigningIn(true);
     try {
-        const message = new TextEncoder().encode("Sign into DojoPay as a creator");
-        const signature = await signMessage?.(message);
-        const response = await axios.post(`${BACKEND_URL}/v1/user/signin`, {
-            signature,
-            publicKey: publicKey?.toString()
-        });
-        localStorage.setItem("token", response.data.token);
-        return true;
+      const message = new TextEncoder().encode(
+        "Sign into DojoPay as a creator",
+      );
+      const signature = await signMessage?.(message);
+      const response = await axios.post(`${BACKEND_URL}/v1/user/signin`, {
+        signature,
+        publicKey: publicKey?.toString(),
+      });
+      localStorage.setItem("token", response.data.token);
+      return true;
     } catch (error) {
-        console.error("Backend signin failed:", error);
-        return false;
+      console.error("Backend signin failed:", error);
+      return false;
     } finally {
-        setSigningIn(false);
+      setSigningIn(false);
     }
-}
+  }
 
-async function signAndSendWorker(): Promise<boolean> {
+  async function signAndSendWorker(): Promise<boolean> {
     if (!publicKey) {
-        return false;
+      return false;
     }
     if (localStorage.getItem("workerToken")) {
-        return true;
+      return true;
     }
     setSigningIn(true);
     try {
-        console.log("Attempting worker signin with publicKey:", publicKey.toString());
-        const message = new TextEncoder().encode("Sign into DojoPay as a worker");
-        console.log("Message to sign:", message);
-        
-        if (!signMessage) {
-            console.error("signMessage function not available");
-            return false;
-        }
-        
-        // Add a small delay to ensure wallet is ready
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        const signature = await signMessage?.(message);
-        console.log("Signature received:", signature);
-        console.log("Signature type:", typeof signature);
-        console.log("Signature constructor:", signature?.constructor?.name);
-        console.log("Signature length:", signature?.length);
-        console.log("Is array:", Array.isArray(signature));
-        
-        if (!signature) {
-            console.error("No signature received from wallet");
-            return false;
-        }
-        
-        const response = await axios.post(`${BACKEND_URL}/v1/worker/signin`, {
-            signature,
-            publicKey: publicKey?.toString()
-        });
-        localStorage.setItem("workerToken", response.data.token);
-        return true;
-    } catch (error) {
-        console.error("Backend worker signin failed:", error);
-        // Add more specific error logging
-        if (error instanceof Error) {
-            console.error("Error name:", error.name);
-            console.error("Error message:", error.message);
-            // If it's a wallet signing error, try once more after a delay
-            if (error.name === 'WalletSignMessageError') {
-                console.log("Retrying worker signin after wallet error...");
-                await new Promise(resolve => setTimeout(resolve, 500));
-                try {
-                    const message = new TextEncoder().encode("Sign into DojoPay as a worker");
-                    const signature = await signMessage?.(message);
-                    if (signature) {
-                        const response = await axios.post(`${BACKEND_URL}/v1/worker/signin`, {
-                            signature,
-                            publicKey: publicKey?.toString()
-                        });
-                        localStorage.setItem("workerToken", response.data.token);
-                        return true;
-                    }
-                } catch (retryError) {
-                    console.error("Retry also failed:", retryError);
-                }
-            }
-        }
+      console.log(
+        "Attempting worker signin with publicKey:",
+        publicKey.toString(),
+      );
+      const message = new TextEncoder().encode("Sign into DojoPay as a worker");
+      console.log("Message to sign:", message);
+
+      if (!signMessage) {
+        console.error("signMessage function not available");
         return false;
+      }
+
+      // Add a small delay to ensure wallet is ready
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const signature = await signMessage?.(message);
+      console.log("Signature received:", signature);
+      console.log("Signature type:", typeof signature);
+      console.log("Signature constructor:", signature?.constructor?.name);
+      console.log("Signature length:", signature?.length);
+      console.log("Is array:", Array.isArray(signature));
+
+      if (!signature) {
+        console.error("No signature received from wallet");
+        return false;
+      }
+
+      const response = await axios.post(`${BACKEND_URL}/v1/worker/signin`, {
+        signature,
+        publicKey: publicKey?.toString(),
+      });
+      localStorage.setItem("workerToken", response.data.token);
+      return true;
+    } catch (error) {
+      console.error("Backend worker signin failed:", error);
+      // Add more specific error logging
+      if (error instanceof Error) {
+        console.error("Error name:", error.name);
+        console.error("Error message:", error.message);
+        // If it's a wallet signing error, try once more after a delay
+        if (error.name === "WalletSignMessageError") {
+          console.log("Retrying worker signin after wallet error...");
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          try {
+            const message = new TextEncoder().encode(
+              "Sign into DojoPay as a worker",
+            );
+            const signature = await signMessage?.(message);
+            if (signature) {
+              const response = await axios.post(
+                `${BACKEND_URL}/v1/worker/signin`,
+                {
+                  signature,
+                  publicKey: publicKey?.toString(),
+                },
+              );
+              localStorage.setItem("workerToken", response.data.token);
+              return true;
+            }
+          } catch (retryError) {
+            console.error("Retry also failed:", retryError);
+          }
+        }
+      }
+      return false;
     } finally {
-        setSigningIn(false);
+      setSigningIn(false);
     }
-}
+  }
 
   useEffect(() => {
     if (mounted && publicKey) {
@@ -184,8 +197,8 @@ async function signAndSendWorker(): Promise<boolean> {
     try {
       const response = await axios.get(`${BACKEND_URL}/v1/worker/balance`, {
         headers: {
-          "Authorization": `Bearer ${localStorage.getItem("workerToken")}`
-        }
+          Authorization: `Bearer ${localStorage.getItem("workerToken")}`,
+        },
       });
       setWorkerEarnings(response.data);
     } catch (error) {
@@ -195,7 +208,10 @@ async function signAndSendWorker(): Promise<boolean> {
 
   // Withdraw earnings
   const withdrawEarnings = async () => {
-    if (!workerEarnings?.pendingAmount || parseFloat(workerEarnings.pendingAmount) <= 0) {
+    if (
+      !workerEarnings?.pendingAmount ||
+      parseFloat(workerEarnings.pendingAmount) <= 0
+    ) {
       showToast("No earnings available to withdraw", "error");
       return;
     }
@@ -209,35 +225,45 @@ async function signAndSendWorker(): Promise<boolean> {
     try {
       // Create withdrawal confirmation message
       const lamportsToWithdraw = workerEarnings.pendingAmount;
-      const withdrawalMessage = new TextEncoder().encode(`Withdraw ${lamportsToWithdraw} lamports to ${publicKey?.toString()}`);
-      
+      const withdrawalMessage = new TextEncoder().encode(
+        `Withdraw ${lamportsToWithdraw} lamports to ${publicKey?.toString()}`,
+      );
+
       // Request user signature for withdrawal confirmation
       const withdrawalSignature = await signMessage(withdrawalMessage);
-      
+
       if (!withdrawalSignature) {
         showToast("Withdrawal signature required", "error");
         return;
       }
 
-      const response = await axios.post(`${BACKEND_URL}/v1/worker/payout`, {
-        signature: withdrawalSignature,
-      }, {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("workerToken")}`
-        }
-      });
-      
+      const response = await axios.post(
+        `${BACKEND_URL}/v1/worker/payout`,
+        {
+          signature: withdrawalSignature,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("workerToken")}`,
+          },
+        },
+      );
+
       // Refresh earnings after successful withdrawal
       await fetchWorkerEarnings();
-      
+
       if (response.data.signature) {
-        showToast(`Successfully withdrew ${lamportsToSol(workerEarnings.pendingAmount)} SOL! Transaction: ${response.data.signature.slice(0, 8)}...`, "success");
+        showToast(
+          `Successfully withdrew ${lamportsToSol(workerEarnings.pendingAmount)} SOL! Transaction: ${response.data.signature.slice(0, 8)}...`,
+          "success",
+        );
       } else {
         showToast("Withdrawal successful!", "success");
       }
     } catch (error: any) {
       console.error("Withdrawal failed:", error);
-      const errorMessage = error.response?.data?.message || "Withdrawal failed. Please try again.";
+      const errorMessage =
+        error.response?.data?.message || "Withdrawal failed. Please try again.";
       showToast(errorMessage, "error");
     } finally {
       setWithdrawing(false);
@@ -246,7 +272,7 @@ async function signAndSendWorker(): Promise<boolean> {
 
   // Fetch earnings when user is worker
   useEffect(() => {
-    if (userType === 'worker' && mounted) {
+    if (userType === "worker" && mounted) {
       fetchWorkerEarnings();
       // Refresh earnings every 30 seconds
       const interval = setInterval(fetchWorkerEarnings, 30000);
@@ -279,8 +305,18 @@ async function signAndSendWorker(): Promise<boolean> {
               onClick={() => setMobileMenuOpen(true)}
               className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 flex-shrink-0"
             >
-              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              <svg
+                className="w-5 h-5 sm:w-6 sm:h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
               </svg>
             </button>
           )}
@@ -290,15 +326,13 @@ async function signAndSendWorker(): Promise<boolean> {
         </div>
         <div className="flex items-center pr-2 sm:pr-4 gap-2 sm:gap-3">
           {/* Worker earnings display */}
-          {userType === 'worker' && workerEarnings && (
+          {userType === "worker" && workerEarnings && (
             <div className="flex items-center gap-2 bg-green-50 px-2 py-1 rounded-lg border border-green-200">
               <div className="text-xs sm:text-sm">
                 <div className="font-semibold text-green-800">
                   {lamportsToSol(workerEarnings.pendingAmount)} SOL
                 </div>
-                <div className="text-xs text-green-600">
-                  Available
-                </div>
+                <div className="text-xs text-green-600">Available</div>
               </div>
               {parseFloat(workerEarnings.pendingAmount) > 0 && (
                 <button
@@ -311,11 +345,11 @@ async function signAndSendWorker(): Promise<boolean> {
               )}
             </div>
           )}
-          
+
           {/* Wallet button */}
           {publicKey ? <WalletDisconnectButton /> : <WalletMultiButton />}
         </div>
-      {/* <UserTypeModal 
+        {/* <UserTypeModal 
             isOpen={showUserTypeModal}
             onClose={() => setShowUserTypeModal(false)}
             onSelectType={(type) => {
@@ -327,14 +361,14 @@ async function signAndSendWorker(): Promise<boolean> {
             signingIn={signingIn}
         /> */}
       </div>
-      
+
       {/* Mobile Menu */}
-      <MobileMenu 
-        isOpen={mobileMenuOpen} 
-        onClose={() => setMobileMenuOpen(false)} 
+      <MobileMenu
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
         userType={userType}
       />
-      
+
       {/* UserTypeModal */}
       <UserTypeModal
         isOpen={showUserTypeModal}

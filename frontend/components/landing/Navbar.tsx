@@ -19,16 +19,29 @@ export const Navbar = ({ onGetStarted }: NavbarProps) => {
           <div className="flex justify-between items-center">
             <div className="text-2xl font-bold tracking-tight">DojoPay</div>
             <div className="hidden md:flex items-center gap-8">
-              <a href="#how-it-works" className="text-gray-600 hover:text-gray-900 font-medium text-[15px] transition-colors">
+              <a
+                href="#how-it-works"
+                className="text-gray-600 hover:text-gray-900 font-medium text-[15px] transition-colors"
+              >
                 How It Works
               </a>
-              <a href="#for-creators" className="text-gray-600 hover:text-gray-900 font-medium text-[15px] transition-colors">
+              <a
+                href="#for-creators"
+                className="text-gray-600 hover:text-gray-900 font-medium text-[15px] transition-colors"
+              >
                 For Creators
               </a>
-              <a href="#for-workers" className="text-gray-600 hover:text-gray-900 font-medium text-[15px] transition-colors">
+              <a
+                href="#for-workers"
+                className="text-gray-600 hover:text-gray-900 font-medium text-[15px] transition-colors"
+              >
                 For Workers
               </a>
-              <a href="#" className="bg-gray-900 text-white px-5 py-2.5 rounded-lg font-semibold shadow-sm hover:shadow-md hover:bg-gray-800 transition-all" onClick={handleGetStarted}>
+              <a
+                href="#"
+                className="bg-gray-900 text-white px-5 py-2.5 rounded-lg font-semibold shadow-sm hover:shadow-md hover:bg-gray-800 transition-all"
+                onClick={handleGetStarted}
+              >
                 Get Started
               </a>
             </div>

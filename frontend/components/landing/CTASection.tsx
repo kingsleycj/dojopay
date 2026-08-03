@@ -2,9 +2,12 @@ export const CTASection = () => {
   return (
     <section className="py-32 bg-gray-900 text-white text-center">
       <div className="max-w-7xl mx-auto px-6">
-        <h2 className="text-5xl font-bold tracking-tight mb-6">Start Building with DojoPay</h2>
+        <h2 className="text-5xl font-bold tracking-tight mb-6">
+          Start Building with DojoPay
+        </h2>
         <p className="text-xl opacity-90 mb-10 max-w-2xl mx-auto">
-          Join creators and workers using the fastest, most transparent task platform in Web3.
+          Join creators and workers using the fastest, most transparent task
+          platform in Web3.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <a
