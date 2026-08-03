@@ -595,3 +595,13 @@ Discovered in the audit of `main`. Each links to the phase that resolves it.
   found request-level `console.log` of full transaction objects on the hot path.
 - **Validation**: every request body is parsed with a zod schema from `types/`.
 - **Tests**: vitest both sides. Backend mocks `lib/prisma`; frontend uses Testing Library.
+- **Landing page styling is scoped, not global.** The marketing page has its own visual
+  language (`--desk` / `--slip` / `--sol` and the Archivo + IBM Plex faces), declared under
+  a `.dojo` class in `globals.css` and applied on the landing page's root element. It must
+  stay scoped: the signed-in app uses the shadcn token set, and leaking landing values into
+  it would restyle every dashboard card and button. Add landing tokens under `.dojo`, never
+  to `:root`.
+- **Entrance animations use `animation-fill-mode: forwards`, never `both`.** With `both` an
+  element holds its `from` keyframe until the animation starts, so anywhere animations are
+  suspended the content is permanently invisible. `forwards` degrades to "no animation"
+  instead of "no content" — this bit the landing receipt during review.
