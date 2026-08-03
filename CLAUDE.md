@@ -361,6 +361,9 @@ NEXT_PUBLIC_SOLANA_NETWORK=devnet
 
 The server must refuse to boot if a required variable is missing. No silent fallback secrets.
 
+Email setup — Resend, domain verification, and why not Nodemailer:
+[docs/email-setup.md](docs/email-setup.md).
+
 ---
 
 ## 7. Phased implementation plan
