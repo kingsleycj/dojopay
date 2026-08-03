@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "nodemon --watch src --ext ts --exec \"npx tsx src/index.ts\"",
     "start": "npx tsx src/index.ts",
-    "build": "prisma generate && tsc",
+    "build": "npm install --no-audit --no-fund && prisma generate && tsc",
     "migrate:deploy": "prisma migrate deploy",
     "admin:create": "tsx src/scripts/create-admin.ts"
   },
@@ -27,6 +27,8 @@
     "@solana/web3.js": "^1.91.8",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^25.0.2",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/passport-local": "^1.0.38",
@@ -50,8 +52,6 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^25.0.2",
     "@types/supertest": "^6.0.3",
     "nodemon": "^3.1.11",
     "supertest": "^7.1.4",

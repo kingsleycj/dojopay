@@ -19,6 +19,17 @@ declare global {
       workerId?: number;
       /** Signed-in admin, resolved by `requireAdmin`. */
       admin?: { id: number; role: AdminRole; email: string };
+
+      /**
+       * Set by Passport on the Google OAuth callback.
+       *
+       * Declared here rather than relying on `@types/passport`'s own global
+       * augmentation: that only applies if the package resolves during the
+       * compile, so a production install that pruned it turned this into
+       * `Property 'user' does not exist on type 'Request'` — a build failure
+       * caused by an install detail rather than by the code.
+       */
+      user?: unknown;
     }
   }
 }

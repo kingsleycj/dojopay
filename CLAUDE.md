@@ -598,6 +598,15 @@ Discovered in the audit of `main`. Each links to the phase that resolves it.
   found request-level `console.log` of full transaction objects on the hot path.
 - **Validation**: every request body is parsed with a zod schema from `types/`.
 - **Tests**: vitest both sides. Backend mocks `lib/prisma`; frontend uses Testing Library.
+- **`npm run build` must install its own dependencies.** The Render service was created
+  by hand, not from the Blueprint, so `render.yaml` is ignored and the dashboard runs
+  `npm run build` with a cached `node_modules`. A build script that assumes an external
+  `npm ci` will fail with `Cannot find module` for anything added since the cache was
+  written. Keep `npm install` as the first step of `build`.
+- **Anything `tsc` needs to compile `src/` belongs in `dependencies`, not
+  `devDependencies`.** Render sets `NODE_ENV=production`, which makes npm skip
+  devDependencies — including `@types/*`, whose absence surfaces as confusing errors like
+  `Property 'user' does not exist on type 'Request'`.
 - **Landing page styling is scoped, not global.** The marketing page has its own visual
   language (`--desk` / `--slip` / `--sol` and the Archivo + IBM Plex faces), declared under
   a `.dojo` class in `globals.css` and applied on the landing page's root element. It must
