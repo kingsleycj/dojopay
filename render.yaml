@@ -4,16 +4,25 @@ services:
     env: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npm run build
+    # `npm ci` is reproducible and Render already installs before building, so
+    # `npm run build` no longer shells out to another install.
+    buildCommand: npm ci && npm run build
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
+      # Render sets NODE_ENV=production, which makes npm skip devDependencies.
+      # dotenv, prisma and tsx are runtime dependencies for that reason.
       - key: PORT
         value: 10000
       - key: DATABASE_URL
         sync: false
       - key: RPC_URL
+        sync: false
+      # Wallet that receives task funding and settles payouts. Must match the
+      # frontend's NEXT_PUBLIC_PLATFORM_WALLET_ADDRESS.
+      - key: PLATFORM_WALLET_ADDRESS
         sync: false
       - key: PRIVATE_KEY
         sync: false
@@ -25,9 +34,27 @@ services:
         sync: false
       - key: S3_BUCKET_SECRET_ACCESS_KEY
         sync: false
-      - key: S3_KEY
-        value: /dojo
+      - key: CLOUDFRONT_URL
+        sync: false
+      # User sessions. One token per person; roles resolve from profiles.
       - key: JWT_SECRET
         generateValue: true
+      # Admin sessions. Independently generated — a shared secret would let any
+      # user token be replayed against the admin API.
+      - key: ADMIN_JWT_SECRET
+        generateValue: true
+      # Transactional email. Required in production: without it nobody can
+      # verify an address or recover an account.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      # Google sign-in. Optional — leave unset to disable the Google button.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
       - key: FRONTEND_URL
         sync: false

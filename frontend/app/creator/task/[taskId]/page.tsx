@@ -1,326 +1,296 @@
-"use client"
-import { Appbar } from '@/components/Appbar';
-import { ApplicationFooter } from '@/components/ApplicationFooter';
-import { CreatorSidebar } from '@/components/CreatorSidebar';
-import { CountdownTimer } from '@/components/CountdownTimer';
-import { BACKEND_URL, CLOUDFRONT_URL } from '@/utils';
-import axios from 'axios';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useWallet } from '@solana/wallet-adapter-react';
+"use client";
 
-async function getTaskDetails(taskId: string) {
-    const response = await axios.get(`${BACKEND_URL}/v1/user/task?taskId=${taskId}`, {
-        headers: {
-            "Authorization": `Bearer ${localStorage.getItem("token")}`
-        }
-    })
-    return response.data
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AppShell } from "@/components/shared/AppShell";
+import { ShareButton } from "@/components/shared/ShareButton";
+import { CountdownTimer } from "@/components/CountdownTimer";
+import { RoleGuard, useAuth } from "@/lib/auth";
+import { creatorEndpoints, type TaskResults } from "@/lib/api";
+import { lamportsToSol } from "@/utils/convert";
+
+const SUBMISSIONS_PER_PAGE = 10;
+
+function TaskDetail({ taskId }: { taskId: number }) {
+  const router = useRouter();
+  const { walletAddress } = useAuth();
+  const [data, setData] = useState<TaskResults | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+
+  const load = useCallback(async () => {
+    try {
+      setData(await creatorEndpoints.getTaskResults(taskId));
+    } catch (error) {
+      console.error("Failed to load task", error);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [taskId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/3" />
+          <div className="h-64 bg-gray-200 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="max-w-6xl mx-auto p-6 text-center">
+        <h1 className="text-xl font-bold text-gray-900 mb-2">Task unavailable</h1>
+        <p className="text-gray-600 mb-4">
+          We could not load this task. It may have been removed.
+        </p>
+        <button
+          onClick={() => router.push("/creator/tasks")}
+          className="text-[#f97316] font-medium hover:underline"
+        >
+          Back to tasks
+        </button>
+      </div>
+    );
+  }
+
+  const { result, taskDetails, submissions } = data;
+  const optionIds = Object.keys(result);
+  const totalVotes = Object.values(result).reduce((sum, entry) => sum + entry.count, 0);
+  const totalPages = Math.ceil(submissions.length / SUBMISSIONS_PER_PAGE);
+  const rewardSol = lamportsToSol(
+    (BigInt(taskDetails.amount) / BigInt(taskDetails.maxSubmissions)).toString(),
+  ).toString();
+
+  return (
+    <div className="max-w-6xl mx-auto p-4 sm:p-6">
+      <button
+        onClick={() => router.push("/creator/tasks")}
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        <span className="font-medium">Back to Tasks</span>
+      </button>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2 break-words">
+              {taskDetails.title}
+            </h1>
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700">
+                {taskDetails.status}
+              </span>
+              <span className="text-gray-600">
+                {taskDetails.totalSubmissions} / {taskDetails.maxSubmissions} submissions
+              </span>
+              {taskDetails.expiresAt && (
+                <CountdownTimer expiresAt={taskDetails.expiresAt} compact />
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2 flex-shrink-0">
+            {/* Sharing a task is how a creator fills it — the reward and the
+                sharer's address travel with the link. */}
+            <ShareButton
+              taskId={taskDetails.id}
+              title={taskDetails.title}
+              rewardSol={rewardSol}
+              referrer={walletAddress}
+            />
+            <button
+              onClick={() => router.push(`/creator/task/${taskId}/edit`)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              Edit
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+          {optionIds.map((optionId, index) => (
+            <OptionCard
+              key={optionId}
+              index={index + 1}
+              imageUrl={result[optionId].option.imageUrl}
+              votes={result[optionId].count}
+            />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <section className="bg-gray-50 rounded-xl p-5">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Results</h2>
+            <div className="space-y-3">
+              {optionIds.map((optionId, index) => {
+                const votes = result[optionId].count;
+                const percentage = totalVotes > 0 ? (votes / totalVotes) * 100 : 0;
+
+                return (
+                  <div key={optionId} className="bg-white p-4 rounded-lg border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold text-gray-800">Option {index + 1}</span>
+                      <span className="rounded-full border border-[#fed7aa] bg-[#fff7ed] px-3 py-1 text-sm font-medium text-gray-900">
+                        {percentage.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200">
+                      <div
+                        className="h-full rounded-full bg-[#f97316] transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 text-sm font-medium text-gray-600">
+                      {votes} {votes === 1 ? "vote" : "votes"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="bg-gray-50 rounded-xl p-5">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">
+              Submissions ({submissions.length})
+            </h2>
+
+            {submissions.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500">
+                <p>No submissions yet.</p>
+                <p className="mt-1 text-sm">Share the task to reach more workers.</p>
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <div className="overflow-x-auto max-h-96">
+                  <table className="w-full">
+                    <thead className="sticky top-0 border-b border-gray-200 bg-gray-50">
+                      <tr>
+                        <th className="p-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Worker
+                        </th>
+                        <th className="p-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Option
+                        </th>
+                        <th className="p-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          When
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {submissions
+                        .slice((page - 1) * SUBMISSIONS_PER_PAGE, page * SUBMISSIONS_PER_PAGE)
+                        .map((submission, index) => (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="p-3">
+                              <span className="rounded bg-gray-50 px-2 py-1 font-mono text-xs text-gray-900">
+                                {submission.workerAddress.slice(0, 6)}…
+                                {submission.workerAddress.slice(-4)}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <span className="inline-flex rounded-full border border-[#fed7aa] bg-[#fff7ed] px-3 py-1 text-sm font-medium text-gray-900">
+                                Option {optionIds.indexOf(String(submission.optionId)) + 1}
+                              </span>
+                            </td>
+                            <td className="p-3 text-xs text-gray-500">
+                              {new Date(submission.submittedAt).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-3 border-t border-gray-200 p-3">
+                    <button
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      disabled={page === 1}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-gray-600">
+                      Page {page} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                      disabled={page === totalPages}
+                      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-export default function CreatorTaskDetailPage({ params }: {
-    params: { taskId: string }
+function OptionCard({
+  imageUrl,
+  votes,
+  index,
+}: {
+  imageUrl: string;
+  votes: number;
+  index: number;
 }) {
-    const [result, setResult] = useState<Record<string, {
-        count: number;
-        option: {
-            imageUrl: string
-        }
-    }>>({});
-    const [taskDetails, setTaskDetails] = useState<{
-        title?: string;
-        expiresAt?: string | null;
-    }>({});
-    const [submissions, setSubmissions] = useState<Array<{
-        workerId: number;
-        workerAddress: string;
-        optionId: number;
-        amount: number;
-    }>>([]);
-    const [userType, setUserType] = useState<'worker' | 'creator' | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [currentPage, setCurrentPage] = useState(1);
-    const submissionsPerPage = 10;
-    const router = useRouter();
-    const { publicKey } = useWallet();
+  const [failed, setFailed] = useState(false);
 
-    useEffect(() => {
-        const checkWalletConnection = () => {
-            if (publicKey) {
-                const creatorToken = localStorage.getItem("token");
-                const workerToken = localStorage.getItem("workerToken");
-                
-                if (creatorToken) {
-                    setUserType('creator');
-                } else if (workerToken) {
-                    setUserType('worker');
-                } else {
-                    setUserType(null);
-                }
-            } else {
-                setUserType(null);
-            }
-        };
-
-        checkWalletConnection();
-        const interval = setInterval(checkWalletConnection, 1000);
-        return () => clearInterval(interval);
-    }, [publicKey]);
-
-    useEffect(() => {
-        if (userType === 'creator') {
-            getTaskDetails(params.taskId)
-                .then((data) => {
-                    setResult(data.result)
-                    setTaskDetails(data.taskDetails)
-                    setSubmissions(data.submissions || [])
-                })
-                .finally(() => {
-                    setLoading(false);
-                })
-        }
-    }, [params.taskId, userType]);
-
-    if (loading || userType !== 'creator') {
-        return (
-            <div className="min-h-screen flex flex-col">
-                <Appbar onUserTypeSelect={setUserType} />
-                <div className="flex-grow flex justify-center items-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#f97316]"></div>
-                </div>
-                <ApplicationFooter />
-            </div>
-        );
-    }
-
-    return (
-        <div className="min-h-screen bg-gray-50">
-            <Appbar onUserTypeSelect={setUserType} />
-            <div className="flex flex-grow pt-16">
-                <CreatorSidebar activeView="tasks" onViewChange={() => {}} />
-                <div className="flex-grow ml-64">
-                    <div className="max-w-6xl mx-auto p-6">
-                        {/* Header Section */}
-                        <div className="mb-8">
-                            <button
-                                onClick={() => router.push('/creator/tasks')}
-                                className='inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-4 group'>
-                                <svg className="w-4 h-4 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                </svg>
-                                <span className="font-medium">Back to Tasks</span>
-                            </button>
-                            
-                            <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
-                                <div className="flex items-start justify-between mb-6">
-                                    <div className="flex-1">
-                                        <h1 className="text-3xl font-bold text-gray-900 mb-3">{taskDetails.title}</h1>
-                                        {taskDetails.expiresAt && (
-                                            <div className="mb-4">
-                                                <CountdownTimer expiresAt={taskDetails.expiresAt} compact={true} />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2 ml-4">
-                                        <button
-                                            onClick={() => router.push(`/creator/task/${params.taskId}/edit`)}
-                                            className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors shadow-sm">
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                            </svg>
-                                            Edit Task
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Task Options Grid */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                                    {Object.keys(result || {}).map((taskId, index) => (
-                                        <TaskCard key={taskId} index={index + 1} imageUrl={result[taskId].option.imageUrl} votes={result[taskId].count} />
-                                    ))}
-                                </div>
-
-                                {/* Analytics and Submissions Grid */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    {/* Analytics Section */}
-                                    <div className="bg-gray-50 rounded-xl p-6">
-                                        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                            <svg className="w-5 h-5 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                            </svg>
-                                            Analytics
-                                        </h2>
-                                        <div className="space-y-4">
-                                            {Object.keys(result || {}).map((taskId, index) => {
-                                                const totalVotes = Object.values(result || {}).reduce((acc, curr) => acc + curr.count, 0);
-                                                const votes = result[taskId].count;
-                                                const percentage = totalVotes > 0 ? ((votes / totalVotes) * 100).toFixed(1) : "0";
-
-                                                return (
-                                                    <div key={taskId} className='bg-white p-4 rounded-lg border border-gray-200'>
-                                                        <div className='flex items-center justify-between mb-3'>
-                                                            <span className='font-semibold text-gray-800'>Option {index + 1}</span>
-                                                            <span className='bg-[#fff7ed] text-gray-900 text-sm font-medium px-3 py-1 rounded-full border border-[#fed7aa]'>
-                                                                {percentage}%
-                                                            </span>
-                                                        </div>
-                                                        <div className='w-full bg-gray-200 rounded-full h-3 overflow-hidden'>
-                                                            <div 
-                                                                className='bg-[#f97316] h-3 rounded-full transition-all duration-500 ease-out' 
-                                                                style={{ width: `${percentage}%` }}
-                                                            ></div>
-                                                        </div>
-                                                        <div className='mt-2 text-sm text-gray-600 font-medium'>
-                                                            {votes} {votes === 1 ? 'Vote' : 'Votes'}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Submissions Section */}
-                                    <div className="bg-gray-50 rounded-xl p-6">
-                                        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-                                            <svg className="w-5 h-5 text-[#f97316]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                            </svg>
-                                            Submissions ({submissions.length})
-                                        </h2>
-                                        <div className='bg-white rounded-lg border border-gray-200 overflow-hidden'>
-                                            {submissions.length === 0 ? (
-                                                <div className="p-8 text-center text-gray-500">
-                                                    <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                                                    </svg>
-                                                    <p>No submissions yet</p>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <div className="max-h-96 overflow-y-auto">
-                                                        <table className='w-full'>
-                                                            <thead className='bg-gray-50 border-b border-gray-200 sticky top-0'>
-                                                                <tr>
-                                                                    <th className='p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>Worker Address</th>
-                                                                    <th className='p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>Option</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className='divide-y divide-gray-200'>
-                                                                {submissions
-                                                                    .slice((currentPage - 1) * submissionsPerPage, currentPage * submissionsPerPage)
-                                                                    .map((sub, i) => {
-                                                                        const optionKeys = Object.keys(result || {});
-                                                                        const optionIndex = optionKeys.indexOf(sub.optionId.toString()) + 1;
-
-                                                                        return (
-                                                                            <tr key={i} className='hover:bg-gray-50 transition-colors'>
-                                                                                <td className='p-4'>
-                                                                                    <div className='font-mono text-sm text-gray-900 bg-gray-50 px-2 py-1 rounded'>
-                                                                                        {sub.workerAddress.slice(0, 6)}...{sub.workerAddress.slice(-4)}
-                                                                                    </div>
-                                                                                </td>
-                                                                                <td className='p-4'>
-                                                                                    <span className='inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-[#fff7ed] text-gray-900 border border-[#fed7aa]'>
-                                                                                        Option {optionIndex > 0 ? optionIndex : sub.optionId}
-                                                                                    </span>
-                                                                                </td>
-                                                                            </tr>
-                                                                        );
-                                                                    })}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    
-                                                    {/* Pagination */}
-                                                    {submissions.length > submissionsPerPage && (
-                                                        <div className='flex justify-center items-center gap-2 p-4 border-t border-gray-200'>
-                                                            <button
-                                                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                                                disabled={currentPage === 1}
-                                                                className='px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-                                                            >
-                                                                Previous
-                                                            </button>
-                                                            <span className='text-sm text-gray-600'>
-                                                                Page {currentPage} of {Math.ceil(submissions.length / submissionsPerPage)}
-                                                            </span>
-                                                            <button
-                                                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(submissions.length / submissionsPerPage)))}
-                                                                disabled={currentPage === Math.ceil(submissions.length / submissionsPerPage)}
-                                                                className='px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-                                                            >
-                                                                Next
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <ApplicationFooter />
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="aspect-square bg-gray-100">
+        {failed ? (
+          <div className="flex h-full items-center justify-center text-xs text-gray-500">
+            Image unavailable
+          </div>
+        ) : (
+          <img
+            src={imageUrl}
+            alt={`Option ${index}`}
+            className="h-full w-full object-cover"
+            onError={() => setFailed(true)}
+            loading="lazy"
+          />
+        )}
+      </div>
+      <div className="p-3">
+        <div className="text-xs font-medium text-gray-500">Option {index}</div>
+        <div className="mt-1 flex items-baseline justify-between">
+          <span className="text-lg font-bold text-gray-900">{votes}</span>
+          <span className="text-xs text-gray-500">{votes === 1 ? "vote" : "votes"}</span>
         </div>
-    );
+      </div>
+    </div>
+  );
 }
 
-function TaskCard({ imageUrl, votes, index }: {
-    imageUrl: string;
-    votes: number;
-    index: number;
+export default function CreatorTaskDetailPage({
+  params,
+}: {
+  params: { taskId: string };
 }) {
-    const [hasError, setHasError] = useState(false);
-
-    const handleImageError = () => {
-        if (!hasError) {
-            console.error('Image failed to load:', imageUrl);
-            setHasError(true);
-        }
-    };
-
-    if (hasError) {
-        return (
-            <div className='bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow'>
-                <div className='aspect-square bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center'>
-                    <div className="text-center">
-                        <svg className="w-12 h-12 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <div className="text-sm text-gray-500">Image Not Available</div>
-                    </div>
-                </div>
-                <div className='p-4'>
-                    <div className='text-sm font-medium text-gray-500 mb-2'>Option {index}</div>
-                    <div className='flex items-center justify-between'>
-                        <span className='text-lg font-bold text-gray-900'>{votes}</span>
-                        <span className='text-sm text-gray-500'>{votes === 1 ? 'Vote' : 'Votes'}</span>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className='bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-200 group'>
-            <div className='aspect-square overflow-hidden bg-gray-50'>
-                <img 
-                    className='w-full h-full object-cover group-hover:scale-105 transition-transform duration-300' 
-                    src={imageUrl}
-                    onError={handleImageError}
-                    alt={`Option ${index}`} 
-                />
-            </div>
-            <div className='p-4'>
-                <div className='text-sm font-medium text-gray-500 mb-2'>Option {index}</div>
-                <div className='flex items-center justify-between'>
-                    <span className='text-lg font-bold text-gray-900'>{votes}</span>
-                    <span className='text-sm text-gray-500'>{votes === 1 ? 'Vote' : 'Votes'}</span>
-                </div>
-            </div>
-        </div>
-    );
+  return (
+    <RoleGuard role="creator">
+      <AppShell role="creator" activeView="tasks">
+        <TaskDetail taskId={Number(params.taskId)} />
+      </AppShell>
+    </RoleGuard>
+  );
 }

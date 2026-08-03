@@ -1,65 +1,60 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
+import { config } from "../config/index.js";
+import { logger } from "./logger.js";
 const globalForPrisma = globalThis;
 const baseClient = globalForPrisma.prisma ??
     new PrismaClient({
-        log: ['query', 'info', 'warn', 'error'],
-        datasources: {
-            db: {
-                url: process.env.DATABASE_URL,
-            },
-        },
+        // Query logging is deafening on a hot path; keep it to real problems.
+        log: ["warn", "error"],
+        datasources: { db: { url: config.database.url } },
     });
-if (process.env.NODE_ENV !== 'production')
+if (!config.isProduction)
     globalForPrisma.prisma = baseClient;
+/** Transient Prisma error codes worth retrying — connection and pool timeouts. */
+const RETRYABLE = new Set(["P1001", "P1008", "P2024", "P5001"]);
 export const prismaClient = baseClient.$extends({
     query: {
         $allModels: {
-            async $allOperations({ operation, model, args, query }) {
+            async $allOperations({ args, query }) {
                 let retries = 5;
-                while (true) {
+                for (;;) {
                     try {
                         return await query(args);
                     }
                     catch (error) {
-                        // P1001: Can't reach database server
-                        // P1008: Operations timed out
-                        // P2024: Timed out fetching a new connection from the connection pool
-                        // P5001: Request timed out
-                        if (error?.code === 'P1001' || error?.code === 'P1008' || error?.code === 'P2024' || error?.code === 'P5001') {
-                            if (retries > 0) {
-                                retries--;
-                                console.warn(`Database query failed (Code: ${error.code}). Retrying in 2s... (${retries} retries left)`);
-                                await new Promise(r => setTimeout(r, 2000));
-                                continue;
-                            }
+                        if (RETRYABLE.has(error?.code) && retries > 0) {
+                            retries -= 1;
+                            logger.warn("Database query failed, retrying", { code: error.code, retries });
+                            await new Promise((resolve) => setTimeout(resolve, 2000));
+                            continue;
                         }
                         throw error;
                     }
                 }
-            }
-        }
-    }
+            },
+        },
+    },
 });
-// Add connection status logging with retry
 export async function connectDB(retries = 8) {
     while (retries > 0) {
         try {
-            console.log("Connecting to database...");
             await baseClient.$connect();
-            console.log("Database connected successfully");
+            logger.info("Database connected");
             return;
         }
         catch (error) {
-            console.error("Database connection failed:", error);
             retries -= 1;
-            console.log(`Retries remaining: ${retries}`);
-            if (retries === 0) {
-                console.error("Could not connect to database after multiple attempts");
-                process.exit(1);
-            }
-            // Wait for 2 seconds before retrying
+            logger.error("Database connection failed", {
+                retriesRemaining: retries,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            if (retries === 0)
+                throw new Error("Could not connect to database after multiple attempts");
             await new Promise((resolve) => setTimeout(resolve, 2000));
         }
     }
+}
+export async function disconnectDB() {
+    await baseClient.$disconnect();
 }
 //# sourceMappingURL=prisma.js.map

@@ -1,9 +1,9 @@
 "use client";
 
-import { BACKEND_URL } from "@/utils";
-import axios from "axios";
-import { useEffect, useState } from "react";
-import { showToast } from "@/components/Toast";
+import { useCallback, useEffect, useState } from "react";
+import { workerEndpoints, type LedgerEntry } from "@/lib/api";
+import { useWithdrawal } from "@/hooks/useWithdrawal";
+import { explorerTxUrl } from "@/lib/solana/config";
 import { lamportsToSol, solToUsdSync, getSolPrice } from "@/utils/convert";
 import {
   ExternalLink,
@@ -15,15 +15,9 @@ import {
   ChevronRight,
 } from "lucide-react";
 
-interface EarningRecord {
-  id: number;
-  amount: string;
-  date: string;
-  status: "pending" | "paid" | "withdrawn";
-  transactionHash?: string;
-  taskId?: number;
-  taskTitle?: string;
-}
+// Shape comes from the API contract in lib/api/types — keeping a hand-written
+// duplicate here is how the frontend and backend drifted apart before.
+type EarningRecord = LedgerEntry;
 
 interface WorkerEarningsProps {
   onBack?: () => void;
@@ -36,7 +30,6 @@ export const WorkerEarningsContent = ({ onBack }: WorkerEarningsProps) => {
     totalEarned: string;
   }>({ pendingEarnings: "0", totalEarned: "0" });
   const [loading, setLoading] = useState(true);
-  const [withdrawing, setWithdrawing] = useState(false);
   const [solPriceFetched, setSolPriceFetched] = useState(false);
   const [pagination, setPagination] = useState<{
     currentPage: number;
@@ -54,75 +47,43 @@ export const WorkerEarningsContent = ({ onBack }: WorkerEarningsProps) => {
     hasPreviousPage: false,
   });
 
-  const handleWithdrawal = async () => {
-    try {
-      setWithdrawing(true);
-      const token = localStorage.getItem("workerToken");
-      if (!token) {
-        showToast("Please sign in to withdraw", "error");
-        return;
-      }
-
-      const response = await axios.post(
-        `${BACKEND_URL}/v1/worker/payout`,
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
-
-      showToast(response.data.message || "Withdrawal successful!", "success");
-
-      await fetchEarnings(pagination.currentPage);
-    } catch (error: any) {
-      console.error("Withdrawal error:", error);
-      if (error.response?.data?.message) {
-        showToast(error.response.data.message, "error");
-      } else {
-        showToast("Withdrawal failed. Please try again.", "error");
-      }
-    } finally {
-      setWithdrawing(false);
-    }
-  };
-
-  const fetchEarnings = async (page: number = 1) => {
+  const fetchEarnings = useCallback(async (page: number = 1) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem("workerToken");
-      if (!token) return;
-
-      const response = await axios.get(`${BACKEND_URL}/v1/worker/earnings`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { page, limit: 4 },
-      });
-
-      const { metrics, earnings, pagination: paginationData } = response.data;
-
-      setEarnings(earnings);
-      setMetrics(metrics);
-      setPagination(paginationData);
-    } catch (error: any) {
+      const data = await workerEndpoints.earnings(page, 4);
+      setEarnings(data.earnings);
+      setMetrics(data.metrics);
+      setPagination(data.pagination);
+    } catch (error) {
+      // 401/403 token cleanup happens in the API client interceptor; the
+      // RoleGuard then redirects. Here we only need to clear stale data.
       console.error("Error fetching earnings:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("workerToken");
-        window.location.href = "/";
-      } else {
-        setEarnings([]);
-        setMetrics({ pendingEarnings: "0", totalEarned: "0" });
-        setPagination({
-          currentPage: 1,
-          itemsPerPage: 4,
-          totalItems: 0,
-          totalPages: 0,
-          hasNextPage: false,
-          hasPreviousPage: false,
-        });
-      }
+      setEarnings([]);
+      setMetrics({ pendingEarnings: "0", totalEarned: "0" });
+      setPagination({
+        currentPage: 1,
+        itemsPerPage: 4,
+        totalItems: 0,
+        totalPages: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  /**
+   * Withdrawal goes through the shared hook, which signs the
+   * `Withdraw <lamports> to <address>` message the backend requires. This
+   * component previously POSTed an empty body, so every withdrawal from the
+   * earnings page failed with a 400.
+   */
+  const { withdraw, isWithdrawing } = useWithdrawal(() =>
+    fetchEarnings(pagination.currentPage),
+  );
+
+  const handleWithdrawal = () => withdraw(metrics.pendingEarnings);
 
   useEffect(() => {
     // Fetch SOL price for USD conversions
@@ -136,7 +97,7 @@ export const WorkerEarningsContent = ({ onBack }: WorkerEarningsProps) => {
       });
 
     fetchEarnings();
-  }, []);
+  }, [fetchEarnings]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -171,10 +132,9 @@ export const WorkerEarningsContent = ({ onBack }: WorkerEarningsProps) => {
   };
 
   const openSolanaExplorer = (txHash: string) => {
-    window.open(
-      `https://explorer.solana.com/tx/${txHash}?cluster=devnet`,
-      "_blank",
-    );
+    // Cluster comes from lib/solana/config, so the link matches the network the
+    // app is actually connected to instead of always claiming devnet.
+    window.open(explorerTxUrl(txHash), "_blank", "noopener,noreferrer");
   };
 
   if (loading) {
@@ -256,11 +216,11 @@ export const WorkerEarningsContent = ({ onBack }: WorkerEarningsProps) => {
             </div>
             <button
               onClick={handleWithdrawal}
-              disabled={withdrawing}
+              disabled={isWithdrawing}
               className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
             >
               <DollarSign className="h-4 w-4" />
-              {withdrawing ? "Withdrawing..." : "Withdraw"}
+              {isWithdrawing ? "Withdrawing…" : "Withdraw"}
             </button>
           </div>
         </div>

@@ -1,0 +1,22 @@
+[package]
+name = "dojopay-escrow"
+version = "0.1.0"
+description = "Escrow program holding DojoPay task funds"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "dojopay_escrow"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+# Pinned to 0.30.x: the local toolchain is rustc 1.79 / solana-cli 1.18, and
+# anchor-lang 0.31+ requires a newer Rust and Solana 2.x.
+anchor-lang = "0.30.1"

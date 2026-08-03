@@ -1,0 +1,11 @@
+# Build output
+target/
+.anchor/
+
+# Program keypairs are signing keys for the deployed program's upgrade
+# authority. Never commit them — a leaked key lets anyone replace the program
+# holding every open task's funds.
+**/*-keypair.json
+
+# JS test scaffolding
+node_modules/

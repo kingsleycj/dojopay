@@ -1,53 +1,24 @@
-"use client";
-import React, { FC, useMemo } from 'react';
-import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-import {
-    WalletModalProvider
-} from '@solana/wallet-adapter-react-ui';
-import {
-    PhantomWalletAdapter,
-    SolflareWalletAdapter,
-    LedgerWalletAdapter,
-} from '@solana/wallet-adapter-wallets';
-import { clusterApiUrl } from '@solana/web3.js';
+import type { Metadata } from "next";
+import { WalletProviders } from "@/components/shared/WalletProviders";
 import "./globals.css";
+import "@solana/wallet-adapter-react-ui/styles.css";
 
-// Default styles that can be overridden by your app
-require('@solana/wallet-adapter-react-ui/styles.css');
+export const metadata: Metadata = {
+  title: "DojoPay — earn SOL for micro-tasks",
+  description:
+    "A Solana task marketplace. Creators fund tasks, workers complete them and get paid in SOL.",
+};
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  const network = WalletAdapterNetwork.Devnet;
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
-  // You can also provide a custom RPC endpoint.
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-
-  const wallets = useMemo(
-      () => [
-        new PhantomWalletAdapter(),
-        new SolflareWalletAdapter({ network }),
-        new LedgerWalletAdapter(),
-      ],
-      [network]
-  );
-
-    return (
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
     <html lang="en">
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </head>
       <body className="bg-gray-50">
-        <ConnectionProvider endpoint={endpoint}>
-            <WalletProvider wallets={wallets} autoConnect>
-                <WalletModalProvider>
-                    {children}
-                </WalletModalProvider>
-            </WalletProvider>
-        </ConnectionProvider>
+        <WalletProviders>{children}</WalletProviders>
       </body>
     </html>
   );

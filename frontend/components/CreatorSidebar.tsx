@@ -9,11 +9,15 @@ interface CreatorSidebarProps {
   onViewChange?: (
     view: "dashboard" | "home" | "tasks" | "create" | "earnings",
   ) => void;
+  mobileMenuOpen?: boolean;
+  onMobileMenuClose?: () => void;
 }
 
 export const CreatorSidebar = ({
   activeView,
   onViewChange,
+  mobileMenuOpen,
+  onMobileMenuClose,
 }: CreatorSidebarProps) => {
   const pathname = usePathname();
   const [navigating, setNavigating] = useState<string | null>(null);
@@ -107,40 +111,56 @@ export const CreatorSidebar = ({
   ];
 
   return (
-    <div className="w-64 bg-black text-white border-r border-gray-200 fixed top-16 left-0 bottom-0 z-30 hidden lg:block">
-      <div className="p-4 sm:p-6 pt-4 h-full overflow-y-auto">
-        {/* Navigation Menu */}
-        <nav className="space-y-1">
-          {menuItems.map((item) => {
-            const isActive =
-              pathname === item.href || (activeView && item.id === activeView);
-            return (
-              <Link
-                key={item.id}
-                href={item.href}
-                onClick={() => {
-                  setNavigating(item.id);
-                  onViewChange?.(item.id as any);
-                }}
-                className={`group flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-all duration-200 transform ${
-                  isActive
-                    ? "bg-[#f97316] text-black scale-105 shadow-lg"
-                    : navigating === item.id
-                      ? "text-gray-200 bg-white/10 scale-95"
-                      : "text-gray-300 hover:text-white hover:bg-white/5 hover:scale-105"
-                }`}
-              >
-                {navigating === item.id ? (
-                  <div className="w-5 h-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
-                ) : (
-                  item.icon
-                )}
-                <span className="ml-3">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+    <>
+      {/* Mobile overlay. The sidebar used to be `hidden lg:block`, which left
+          creators with no navigation at all on a phone. */}
+      {mobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-30"
+          onClick={onMobileMenuClose}
+        />
+      )}
+
+      <div
+        className={`w-64 bg-black text-white border-r border-gray-200 fixed top-16 left-0 bottom-0 z-30 transform transition-transform duration-300 ease-in-out ${
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+      >
+        <div className="p-4 sm:p-6 pt-4 h-full overflow-y-auto">
+          {/* Navigation Menu */}
+          <nav className="space-y-1">
+            {menuItems.map((item) => {
+              const isActive =
+                pathname === item.href || (activeView && item.id === activeView);
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  onClick={() => {
+                    setNavigating(item.id);
+                    onViewChange?.(item.id as any);
+                    onMobileMenuClose?.();
+                  }}
+                  className={`group flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-all duration-200 transform ${
+                    isActive
+                      ? "bg-[#f97316] text-black scale-105 shadow-lg"
+                      : navigating === item.id
+                        ? "text-gray-200 bg-white/10 scale-95"
+                        : "text-gray-300 hover:text-white hover:bg-white/5 hover:scale-105"
+                  }`}
+                >
+                  {navigating === item.id ? (
+                    <div className="w-5 h-5 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
+                  ) : (
+                    item.icon
+                  )}
+                  <span className="ml-3">{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </div>
-    </div>
+    </>
   );
 };

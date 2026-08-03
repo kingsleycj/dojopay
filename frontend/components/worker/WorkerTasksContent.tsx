@@ -1,12 +1,12 @@
 "use client";
 
-import { BACKEND_URL } from "@/utils";
-import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { showToast } from "@/components/Toast";
+import { workerEndpoints } from "@/lib/api";
 import { lamportsToSol } from "@/utils/convert";
 import dynamic from "next/dynamic";
 import { Task } from "@/types/worker";
+import { TaskDetailView } from "@/components/worker/TaskDetailView";
 
 // Import all icons dynamically to prevent hydration
 const Clock = dynamic(
@@ -110,91 +110,67 @@ export const WorkerTasksContent = ({ onTaskSelect }: WorkerTasksProps) => {
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-  const fetchAvailableTasks = async () => {
+  const fetchAvailableTasks = useCallback(async () => {
     try {
-      const token = localStorage.getItem("workerToken");
-      if (!token) return;
+      const task = await workerEndpoints.nextTask();
 
-      // Fetch next available task from backend
-      const response = await axios.get(`${BACKEND_URL}/v1/worker/nextTask`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (!task) {
+        setAvailableTasks([]);
+        return;
+      }
 
-      // The task is at the root level of response.data, not nested under "task"
-      if (response.data && response.data.id) {
-        const task = response.data;
-
-        // Calculate worker's earnings: task.amount / TOTAL_SUBMISSIONS (100)
-        const workerAmountLamports = BigInt(task.amount) / BigInt(100);
-        const workerAmountSol = lamportsToSol(workerAmountLamports.toString());
-
-        const formattedTask: Task = {
+      setAvailableTasks([
+        {
           id: task.id,
-          title: task.title || "Label this image",
-          description:
-            task.description || "Select the best label for this image",
-          amount: workerAmountSol, // Use worker's calculated amount
+          title: task.title,
+          description: "Select the best option for this task",
+          // The backend now reports the worker's share directly, so the
+          // frontend no longer has to know the 100-submission divisor.
+          amount: lamportsToSol(task.rewardLamports).toString(),
           status: "available",
-          createdAt: task.createdAt || new Date().toISOString(), // Use createdAt or current date
-          expiresAt: task.expiresAt,
-          options: task.options || [],
-        };
-        setAvailableTasks([formattedTask]);
-      } else {
-        setAvailableTasks([]);
-      }
-    } catch (error: any) {
+          createdAt: task.createdAt,
+          expiresAt: task.expiresAt ?? undefined,
+          options: task.options,
+        },
+      ]);
+    } catch (error) {
       console.error("Error fetching available tasks:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("workerToken");
-        window.location.href = "/";
-      } else {
-        setAvailableTasks([]);
-      }
+      setAvailableTasks([]);
     }
-  };
+  }, []);
 
-  const fetchCompletedTasks = async () => {
+  const fetchCompletedTasks = useCallback(async () => {
     try {
-      const token = localStorage.getItem("workerToken");
-      if (!token) return;
+      const submissions = await workerEndpoints.submissions();
 
-      const response = await axios.get(`${BACKEND_URL}/v1/worker/submissions`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const submissions = response.data?.submissions || [];
-      const tasks: Task[] = submissions.map((s: any) => ({
-        id: s.task_id,
-        title: s.task_title || `Task #${s.task_id}`,
-        description: "Completed task",
-        amount: lamportsToSol(s.amount || "1000000").toString(), // Convert lamports to SOL
-        status: "completed", // All submissions should show as completed
-        createdAt: new Date().toISOString(), // Use current date since created_at doesn't exist
-        expiresAt: null,
-      }));
-
-      setCompletedTasks(tasks);
-    } catch (error: any) {
+      setCompletedTasks(
+        submissions.map((submission: any) => ({
+          id: submission.task_id,
+          title: submission.task_title,
+          description: "Completed task",
+          amount: lamportsToSol(submission.amount).toString(),
+          status: "completed" as const,
+          // Real submission timestamp — this used to be `new Date()`, so every
+          // completed task claimed to have been done just now.
+          createdAt: submission.created_at,
+          expiresAt: undefined,
+        })),
+      );
+    } catch (error) {
       console.error("Error fetching completed tasks:", error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        localStorage.removeItem("workerToken");
-        window.location.href = "/";
-      } else {
-        setCompletedTasks([]);
-      }
+      setCompletedTasks([]);
     }
-  };
+  }, []);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchAvailableTasks(), fetchCompletedTasks()]);
+    setLoading(false);
+  }, [fetchAvailableTasks, fetchCompletedTasks]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      await Promise.all([fetchAvailableTasks(), fetchCompletedTasks()]);
-      setLoading(false);
-    };
-
-    fetchData();
-  }, []);
+    void refresh();
+  }, [refresh]);
 
   const handleTaskClick = (task: Task) => {
     if (task.status === "available") {
@@ -207,165 +183,20 @@ export const WorkerTasksContent = ({ onTaskSelect }: WorkerTasksProps) => {
     setSelectedTask(null);
   };
 
-  const TaskDetailView = ({ task }: { task: Task }) => {
-    const [selectedOption, setSelectedOption] = useState<number | null>(null);
-    const [submitting, setSubmitting] = useState(false);
-
-    const handleSubmit = async () => {
-      if (selectedOption === null) {
-        showToast("Please select an option", "error");
-        return;
-      }
-
-      setSubmitting(true);
-      try {
-        const token = localStorage.getItem("workerToken");
-        if (!token) {
-          showToast("Please log in again", "error");
-          return;
-        }
-
-        const response = await axios.post(
-          `${BACKEND_URL}/v1/worker/submission`,
-          {
-            taskId: task.id.toString(),
-            selection: selectedOption.toString(),
-          },
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
-
-        showToast("Task submitted successfully!", "success");
-        setSelectedTask(null);
-        fetchAvailableTasks(); // Refresh available tasks
-        fetchCompletedTasks(); // Refresh completed tasks
-      } catch (error: any) {
-        console.error("Submission error:", error);
-        showToast(
-          error.response?.data?.message || "Failed to submit task",
-          "error",
-        );
-      } finally {
-        setSubmitting(false);
-      }
-    };
-
-    return (
-      <div className="max-w-4xl mx-auto pt-8">
-        <div className="mb-8">
-          <button
-            onClick={handleBackToTasks}
-            className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            <svg
-              className="w-5 h-5 mr-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            Back to Tasks
-          </button>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {task.title}
-            </h2>
-            {task.description && (
-              <p className="text-gray-600">{task.description}</p>
-            )}
-          </div>
-
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-4">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                  <DollarSign className="h-4 w-4 mr-1" />
-                  {task.amount} SOL
-                </span>
-                {task.expiresAt && (
-                  <div className="flex items-center text-sm text-orange-600">
-                    <Clock className="h-4 w-4 mr-1" />
-                    <ClientOnly>
-                      <CountdownTimer expiresAt={task.expiresAt} />
-                    </ClientOnly>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Select the best option:
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {task.options?.map((option, index) => (
-                <div
-                  key={option.id}
-                  onClick={() => setSelectedOption(option.id)}
-                  className={`relative cursor-pointer rounded-lg border-2 transition-all ${
-                    selectedOption === option.id
-                      ? "border-[#f97316] ring-2 ring-[#f97316]/20"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                >
-                  <div className="aspect-square relative">
-                    <img
-                      src={option.imageUrl}
-                      alt={`Option ${index + 1}`}
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                    {selectedOption === option.id && (
-                      <div className="absolute top-2 right-2 bg-[#f97316] text-white rounded-full p-1">
-                        <svg
-                          className="w-4 h-4"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              onClick={handleSubmit}
-              disabled={submitting || selectedOption === null}
-              className="bg-[#f97316] text-white px-6 py-3 rounded-lg font-medium hover:bg-[#ea580c] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
-            >
-              {submitting ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Submitting...
-                </>
-              ) : (
-                "Submit Task"
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const handleSubmitTask = useCallback(
+    async (taskId: number, selection: number) => {
+      const result = await workerEndpoints.submit(taskId, selection);
+      showToast(
+        result.taskFull
+          ? "Submitted — that was the last slot on this task!"
+          : "Task submitted successfully!",
+        "success",
+      );
+      setSelectedTask(null);
+      await refresh();
+    },
+    [refresh],
+  );
 
   const TaskCard = ({ task }: { task: Task }) => {
     const isExpired = task.expiresAt && new Date(task.expiresAt) <= new Date();
@@ -515,7 +346,11 @@ export const WorkerTasksContent = ({ onTaskSelect }: WorkerTasksProps) => {
   if (selectedTask) {
     return (
       <ClientOnly>
-        <TaskDetailView task={selectedTask} />
+        <TaskDetailView
+          task={selectedTask}
+          onBack={handleBackToTasks}
+          onSubmit={handleSubmitTask}
+        />
       </ClientOnly>
     );
   }
